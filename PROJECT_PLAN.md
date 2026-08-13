@@ -76,7 +76,8 @@ consistent, and so neither teammate silently reverts one.
 | **D8** | Hard framing subsamples **Malicious-DoH down to ~19,807** (1:1 vs Benign-DoH) | Unbalanced, "hard" framing is **93% positive**: always-malicious scores F1 = 0.962, PR-AUC baseline is 0.93, SMOTE would oversample *benign*, and `scale_pos_weight` drops below 1. The needle-in-a-haystack framing Ch 7.2 requires is inverted |
 | **D9** | F1 columns renamed `vol_primary` / `vol_secondary` / `vol_total` | The original `vol_mean`/`vol_max`/`vol_dispersion` names were aspirational — neither dataset supplies mean/max/dispersion. `FQDN_count` and `FlowBytesSent` are both cumulative, so `vol_total` is an honest pairing |
 | **D10** | Deep learning framework: **PyTorch (CPU)** | ~200 MB, no Windows/CUDA friction, explicit training loops that read well in the report. Both models are tiny |
-| **D11** | EXF-2021 real file layout **locked** (13 Aug, header-verified) — see full writeup below and in `runs/metrics/header_reconciliation_exf2021.md` | Real files diverge from the spec in three ways: attacks/benign are pre-separated (no 60/40 unmixing needed); benign comes from **three** sources incl. an easy-to-miss top-level `Benign.zip`; `sld` is a second, worse leakage column than `SourceIP` (22 unique values in attack traffic vs. 11K–22K in benign) |
+| **D11** | EXF-2021 real file layout **locked** (13 Aug, header-verified) — see full writeup below and in `docs/header_reconciliation_exf2021.md` | Real files diverge from the spec in three ways: attacks/benign are pre-separated (no 60/40 unmixing needed); benign comes from **three** sources incl. an easy-to-miss top-level `Benign.zip`; `sld` is a second, worse leakage column than `SourceIP` (22 unique values in attack traffic vs. 11K–22K in benign) |
+| **D12** | DoHBrw-2020 headers **locked** (13 Aug, header-verified by B) — see `docs/header_reconciliation_dohbrw2020.md` | Clean, pre-aggregated CSVs (`l1-doh`/`l1-nondoh`/`l2-benign`/`l2-malicious`). All 11 proposed column names matched exactly — zero renames. Raw counts confirmed: Benign-DoH 19,807 / Malicious-DoH 249,836, exactly matching D8's assumption. **`SourceIP` leakage confirmed independently**: 10–16 unique IPs across DoH classes vs. 6,755 in `l1-nondoh` — the same lookup-table failure mode as `sld` (D11), now verified on both datasets separately rather than assumed by analogy |
 
 ### D2 in full — the revised family map
 
@@ -177,11 +178,11 @@ Gate: **BLOCK** = gates the other person's work, gets priority · **PAR** = para
 | Step | Owner | Gate | Status | Notes |
 |---|---|---|---|---|
 | **PHASE 0 — SHARED CONTRACT** | | | | |
-| 0A — Repo skeleton, venv, pinned requirements | A+B | BLOCK | ⬜ | PyTorch CPU per D10 — no open decisions |
-| 0B — Dataset acquisition | A+B | BLOCK | ⬜ | **MANUAL** — UNB forms, download time is the schedule risk |
-| 0C — Header verification & schema finalisation | A+B | BLOCK | 🟡 | **Dataset A done** (see `runs/metrics/header_reconciliation_exf2021.md` — real layout differs from spec, `sld` leakage found). **Dataset B still pending** |
-| 0D — `schema/unified.py`, `ingestion/base.py`, `registry.py`, `config.yaml` | A+B | BLOCK | ⬜ | The interface every later step imports |
-| **SYNC 1** — contract agreed, skeleton pushed, both pull | A+B | BLOCK | ⬜ | |
+| 0A — Repo skeleton, venv, pinned requirements | A+B | BLOCK | ✅ | PyTorch CPU per D10 |
+| 0B — Dataset acquisition | A+B | BLOCK | ✅ | Both datasets downloaded and verified |
+| 0C — Header verification & schema finalisation | A+B | BLOCK | ✅ | Both datasets done — `docs/header_reconciliation_exf2021.md` (D11) and `docs/header_reconciliation_dohbrw2020.md` (D12). Two independent leakage findings (`sld`, `SourceIP`) |
+| 0D — `schema/unified.py`, `ingestion/base.py`, `registry.py`, `config.yaml` | A+B | BLOCK | ✅ | Fully LOCKED for both datasets. `tests/test_schema.py` 6/6 passing on both machines |
+| **SYNC 1** — contract agreed, skeleton pushed, both pull | A+B | BLOCK | ✅ | Both pulled `3314098`, both ran `pytest` green independently |
 | **PHASE 1 — INGESTION** | | | | |
 | 1A — `ingestion/exf2021.py` | A | PAR | ⬜ | Light class retained at 100% (D5) |
 | 1B — `ingestion/dohbrw2020.py` | B | PAR | ⬜ | Drops 5 identifiers; dual framing flag (D4) |
@@ -326,9 +327,9 @@ so mirror use is legitimate; concealing it is not.
 
 ---
 
-### Step 0C — Header verification & schema finalisation 🔴
-**Owner: A+B · Gate: BLOCKING · Est: 1.25 h · Files: `runs/metrics/header_reconciliation_*.md`**
-**Status: Dataset A ✅ VERIFIED 13 Aug · Dataset B ⬜ still pending — do not skip it because A's half is done**
+### Step 0C — Header verification & schema finalisation ✅ COMPLETE
+**Owner: A+B · Gate: BLOCKING · Est: 1.25 h · Files: `docs/header_reconciliation_*.md`**
+**Status: Dataset A ✅ VERIFIED 13 Aug (A) · Dataset B ✅ VERIFIED 13 Aug (B) — both halves done, `schema/unified.py` fully LOCKED**
 
 **What this means (plain English).**
 This is the step that saves the project. My written spec lists what the columns *should* be — but that
@@ -339,32 +340,34 @@ spec and the spec is wrong, every downstream step is built on sand.
 So: open the files, print what's really there, and reconcile against the plan **before writing a single
 loader**. Then we lock the exact arithmetic for each of the 11 output columns.
 
-**What Claude should do (Dataset B — still to do).**
-1. Write a throwaway script that, for every CSV in `data/dohbrw2020/`:
-   - prints `df.shape`, `df.columns.tolist()`, `df.dtypes`
-   - prints `df.head(3)` transposed so long rows stay readable
-   - prints `df.isna().sum()` and `df.nunique()` per column
-   - prints the value counts of any candidate label column
-2. **Reconcile and report discrepancies as a table** — spec name vs. actual name vs. dtype vs. verdict,
-   the same way Dataset A's was done (see below). Do not silently adapt. Every rename gets written down;
-   it goes in Chapter 5 as evidence of the harmonisation work.
-3. **Resolve these specific known unknowns:**
-   - **DoHBrw-2020 label columns:** confirm the exact strings for `Malicious-DoH` / `Benign-DoH` /
-     `non-DoH`, and confirm which column carries the DoH/non-DoH split versus the malicious/benign split.
-     The dual-framing flag (D4) depends on getting this exactly right.
-   - **DoHBrw-2020 identifiers:** confirm the exact spelling of `SourceIP`, `DestinationIP`, `SourcePort`,
-     `DestinationPort`, `TimeStamp`. We need `SourceIP` retained *temporarily* for the leakage demo in
-     Step 2C, so the loader takes a `include_leakage_columns=False` flag rather than dropping them
-     unconditionally at read time.
-   - Given what Dataset A's check turned up (see below), **do not assume Dataset B's file layout matches
-     the spec either.** Check the real folder/zip structure before writing `dohbrw2020.py`, the same way
-     we had to for `exf2021.py`.
-4. **Verification:** save a `runs/metrics/header_reconciliation_dohbrw2020.md` in the same format as
-   Dataset A's (below). This is a Chapter 5 figure, not throwaway output.
+**✅ Dataset B (DoHBrw-2020) — DONE (verified by B, 13 Aug). Full findings in
+`docs/header_reconciliation_dohbrw2020.md`.** Much cleaner than Dataset A's check:
+
+1. **File layout:** four pre-aggregated, pre-labeled CSVs (`l1-doh`, `l1-nondoh`, `l2-benign`,
+   `l2-malicious`), MD5-verified against CIC's own checksums. Classes are pre-separated by file, same
+   pattern as Dataset A, and the split is confirmed redundantly by an in-file `Label` column
+   (`DoH`/`NonDoH`/`Benign`/`Malicious`) — not assumed from filename alone.
+2. **Columns: zero renames needed.** All 34 raw columns confirmed identical across all four files, and
+   **every single one of the 11 proposed `dataset_b` column names in `schema/unified.py` matched the
+   real header verbatim** — `PacketLengthMean`, `FlowBytesSent`, `PacketTimeSkewFromMedian`, all of it,
+   exactly as originally proposed. Unlike Dataset A, nothing needed correcting.
+3. **Row counts match D8 exactly:** `l2-benign` 19,807 / `l2-malicious` 249,836 — the hard-framing
+   balancing plan (keep all 19,807 benign, subsample malicious to ~19,807) needs zero adjustment.
+   Easy framing positive rate ≈ 0.214, matching D4's estimate.
+4. **`SourceIP` leakage confirmed and quantified — independently mirrors the `sld` finding (D11):**
+   only **10–16 unique `SourceIP`/`DestinationIP` values** across the DoH classes (19,807–249,836 rows
+   each), versus **6,755 unique IPs** in `l1-nondoh`'s real web traffic. Same lookup-table failure mode
+   as `sld`, now confirmed on both datasets independently rather than assumed by analogy — a stronger
+   basis for the Chapter 4 discrepancy analysis than either finding alone.
+5. Only two non-schema columns (`ResponseTimeTimeMedian`, `ResponseTimeTimeSkewFromMedian`) have any
+   NaN; all 11 unified-schema source columns are fully populated — zero NaN in the B-side data feeding
+   `B_ONLY_COLUMNS`.
+
+`schema/unified.py` is now **fully LOCKED** for both datasets — every `# PROPOSED` comment is gone.
 
 ---
 
-**✅ Dataset A (EXF-2021) — DONE. Full findings in `runs/metrics/header_reconciliation_exf2021.md`.**
+**✅ Dataset A (EXF-2021) — DONE. Full findings in `docs/header_reconciliation_exf2021.md`.**
 Summary of what changed from the spec, so 1A and 2C can be written against reality rather than the
 original assumptions:
 
@@ -396,7 +399,7 @@ original assumptions:
 
 **Locked per-column arithmetic — supersedes the draft table this section originally had:**
 
-| Unified column | Family | Role | Dataset A (**locked**) | Dataset B (still proposed — verify at 0C) |
+| Unified column | Family | Role | Dataset A (**locked**) | Dataset B (**locked**) |
 |---|---|---|---|---|
 | `vol_primary` | F1 | INTERSECTION | `len` | `PacketLengthMean` |
 | `vol_secondary` | F1 | INTERSECTION | `subdomain_length` | `PacketLengthMedian` |
@@ -412,8 +415,14 @@ original assumptions:
 
 Dropped from Dataset A: `timestamp` (not in schema), `sld` (leakage — kept only behind
 `include_leakage_columns=True` for the Step 2C demo, mirroring Dataset B's `SourceIP` handling).
+Dropped from Dataset B: `SourceIP`, `DestinationIP`, `SourcePort`, `DestinationPort`, `TimeStamp`
+(leakage/testbed-artifact, same `include_leakage_columns=True` gate).
 
 ✅ **The F1 naming question (D9) is resolved** — see the Key Design Decisions table above.
+✅ **Both header reconciliations are complete and pushed** — `docs/header_reconciliation_exf2021.md` and
+`docs/header_reconciliation_dohbrw2020.md`. `schema/unified.py` is fully LOCKED, `ingestion/base.py`,
+`ingestion/registry.py`, `config/config.yaml`, `main.py`, and `tests/test_schema.py` (6/6 passing, on
+both teammates' machines independently) are in place. **Step 0D is complete.**
 
 ---
 
@@ -516,18 +525,20 @@ columns in exactly the same order, and a function that crashes loudly if it does
 
 ---
 
-### 🔄 SYNC 1 — end of Phase 0
+### 🔄 SYNC 1 — end of Phase 0 ✅ COMPLETE (13 Aug)
 **Owner: A+B · Gate: BLOCKING**
 
-- [ ] Both datasets downloaded and extracted
-- [ ] Header reconciliation table produced and reviewed **by both people**
-- [ ] Per-column arithmetic locked, including the `vol_primary`/`vol_secondary`/`vol_total` mapping (D9)
-- [ ] `validate_schema()` supports all three modes: `full`, `intersection`, `F1_only`
-- [ ] `schema/unified.py` contract agreed; `test_schema.py` passes
-- [ ] Repo pushed; **both teammates pull and confirm the tests pass on their own machine**
-- [ ] Mirror URLs confirmed reachable (Step 0B contingency table) — before they are needed, not after
+- [x] Both datasets downloaded and extracted
+- [x] Header reconciliation table produced and reviewed **by both people** — `docs/header_reconciliation_exf2021.md` (A) + `docs/header_reconciliation_dohbrw2020.md` (B)
+- [x] Per-column arithmetic locked, including the `vol_primary`/`vol_secondary`/`vol_total` mapping (D9)
+- [x] `validate_schema()` supports all three modes: `full`, `intersection`, `F1_only`
+- [x] `schema/unified.py` contract agreed; `test_schema.py` passes (6/6)
+- [x] Repo pushed (`3314098`); **both teammates pulled and confirmed tests pass on their own machine**
+- [x] Mirror URLs were not needed — both UNB downloads succeeded directly
 
 **From this point on the two teammates work on disjoint files and do not edit each other's.**
+**Phase 1 (ingestion) can now start in parallel:** A → Step 1A (`ingestion/exf2021.py`), B → Step 1B
+(`ingestion/dohbrw2020.py`). Both loaders now have a fully locked, verified schema to build against.
 
 ---
 
