@@ -2,14 +2,12 @@
 Unified Feature Schema for DNS exfiltration detection across two vantage points:
 plaintext DNS (CIC-Bell-DNS-EXF-2021) and encrypted DoH (CIRA-CIC-DoHBrw-2020).
 
-STATUS: DRAFT — pending Dataset B header verification (Step 0C, still open) and
-joint review with Teammate B. Dataset A's column mapping is locked (verified
-13 Aug against real files, see runs/metrics/header_reconciliation_exf2021.md).
-Dataset B's column mapping below is still the PROPOSED name set from the project
-brief -- it has not been checked against a real DoHBrw-2020 CSV. If the real
-columns differ, only this file's docstring/mapping needs to change; nothing
-downstream should need touching, since nothing downstream ever imports a raw
-dataset column name.
+STATUS: LOCKED — both datasets verified against real downloaded files, 13 Aug 2026.
+Dataset A: docs/header_reconciliation_exf2021.md (one drop: sld, plus timestamp).
+Dataset B: docs/header_reconciliation_dohbrw2020.md (zero renames needed -- every
+proposed column name matched the real CSV header verbatim). Step 0C is complete
+for both sides; Step 0D (this file + ingestion/base.py + registry + config) can
+proceed on the locked contract below.
 
 THE CORE CLAIM THIS FILE ENCODES (see PROJECT_PLAN.md "Key Design Decisions", D2):
 
@@ -119,52 +117,52 @@ FAMILY_SECURITY_MEANING: dict[str, str] = {
 
 # ---------------------------------------------------------------------------
 # Per-column source mapping -- the actual arithmetic each loader implements.
-# Dataset A: LOCKED (Step 0C, 13 Aug). Dataset B: PROPOSED, pending verification.
+# Both datasets LOCKED (Step 0C, 13 Aug 2026) against real downloaded files.
 # ---------------------------------------------------------------------------
 COLUMN_SOURCE: dict[str, dict[str, str]] = {
     "vol_primary": {
         "dataset_a": "len",  # LOCKED
-        "dataset_b": "PacketLengthMean",  # PROPOSED -- verify at 0C
+        "dataset_b": "PacketLengthMean",  # LOCKED
     },
     "vol_secondary": {
         "dataset_a": "subdomain_length",  # LOCKED
-        "dataset_b": "PacketLengthMedian",  # PROPOSED -- verify at 0C
+        "dataset_b": "PacketLengthMedian",  # LOCKED
     },
     "vol_total": {
         "dataset_a": "FQDN_count",  # LOCKED
-        "dataset_b": "FlowBytesSent",  # PROPOSED -- verify at 0C
+        "dataset_b": "FlowBytesSent",  # LOCKED
     },
     "rand_entropy": {
         "dataset_a": "entropy",  # LOCKED
-        "dataset_b": "PacketLengthCoefficientofVariation",  # PROPOSED -- verify at 0C
+        "dataset_b": "PacketLengthCoefficientofVariation",  # LOCKED
     },
     "rand_dispersion": {
         "dataset_a": "(numeric + special + upper) / len",  # LOCKED -- guard len == 0
-        "dataset_b": "log1p(PacketLengthVariance)",  # PROPOSED -- verify at 0C
+        "dataset_b": "log1p(PacketLengthVariance)",  # LOCKED
     },
     "struct_segments": {
         "dataset_a": "labels",  # LOCKED
-        "dataset_b": "PacketLengthMode",  # PROPOSED -- verify at 0C
+        "dataset_b": "PacketLengthMode",  # LOCKED
     },
     "struct_max_segment": {
         "dataset_a": "labels_max",  # LOCKED
-        "dataset_b": "PacketLengthStandardDeviation",  # PROPOSED -- verify at 0C
+        "dataset_b": "PacketLengthStandardDeviation",  # LOCKED
     },
     "time_central": {
         "dataset_a": None,  # unobservable -- stateless Dataset A has no temporal telemetry
-        "dataset_b": "PacketTimeMean",  # PROPOSED -- verify at 0C
+        "dataset_b": "PacketTimeMean",  # LOCKED
     },
     "time_dispersion": {
         "dataset_a": None,
-        "dataset_b": "PacketTimeStandardDeviation",  # PROPOSED -- verify at 0C
+        "dataset_b": "PacketTimeStandardDeviation",  # LOCKED
     },
     "time_skew": {
         "dataset_a": None,
-        "dataset_b": "PacketTimeSkewFromMedian",  # PROPOSED -- verify at 0C
+        "dataset_b": "PacketTimeSkewFromMedian",  # LOCKED
     },
     "disp_uniqueness": {
         "dataset_a": None,
-        "dataset_b": "FlowSentRate",  # PROPOSED -- verify at 0C
+        "dataset_b": "FlowSentRate",  # LOCKED
     },
 }
 

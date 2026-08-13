@@ -11,6 +11,7 @@ runs/
 venv/
 __pycache__/
 *.pyc
+.pytest_cache/
 
 # Fitted models / weights
 *.pkl
