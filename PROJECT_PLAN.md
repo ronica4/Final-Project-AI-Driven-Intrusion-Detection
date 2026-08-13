@@ -192,7 +192,7 @@ Gate: **BLOCK** = gates the other person's work, gets priority · **PAR** = para
 | 2A — `preprocessing/pipeline.py` | A | BLOCK | ✅ | Gates every model. Caught + fixed a real bug: `SimpleImputer` silently dropped all-NaN `B_ONLY` columns (11→7) without `keep_empty_features=True` — would have broken the CNN/AE's fixed input width |
 | **2A′ — `evaluation/metrics.py` shared harness + JSON schema** | A | **BLOCK** | ✅ | **B unblocked** — 2E, 2F, 2G can now import it. Verified end-to-end against real Dataset A: aggregate confusion matrix sums exactly to the true class counts (115,714/105,601), confirming CV aggregation is correct |
 | 2B — EDA + statistical evidence per feature → **Ch 3** | A | PAR | ✅ | Dataset A done: 5/7 testable features show large Cliff's delta; 2 multicollinearity pairs flagged; **light vs. heavy surprise** — see writeup below. **Dataset B backfilled by B** (13 Aug, real hard-framing data, code unchanged from A's commit): all 11 columns testable (B observes every family), 4/11 large effect size, 6/11 medium, 4 multicollinearity pairs flagged incl. `vol_primary`↔`struct_max_segment` r=0.94 — see writeup below |
-| 2C — Feature ranking + **`SourceIP` leakage demo** → **Ch 4** | A | PAR | ⬜ | |
+| 2C — Feature ranking + **`SourceIP` leakage demo** → **Ch 4** | A | PAR | ✅ | Dataset A done: gain ranking + `sld` leakage demo produced a genuine surprise (importance dominates but score barely moves — traced to partial class overlap, not a methodology bug) + VIF (nearly all F1/F3 heavily collinear). `SourceIP` demo not run locally (Dataset B data locality, same as 2B/2D) |
 | 2D — XGBoost + `max_depth` sweep | A | PAR | ✅ | Dataset A done: F1=0.818 vs. majority-baseline F1=0.0; sweep flat across depth 3–12 (F1/FPR move <0.001) — see writeup below. **Dataset B backfilled by B** (13 Aug, real hard-framing data, code unchanged from A's commit): F1≈0.9999 flat across the entire depth sweep vs. majority-baseline F1=0.667 — near-perfect separation with all 5 leakage identifiers already dropped. **Flag for Ch 5/8: this complicates "hard framing = the real detection problem"** — packet-shape features alone appear almost trivially sufficient for DoH tunnel detection on this dataset, independent of the SourceIP leakage mechanism. Worth a paragraph, not silently filed away as a good number |
 | 2E — Isolation Forest + `contamination` sweep | B | PAR | ⬜ | |
 | 2F — 1D-CNN + Autoencoder | B | PAR | ⬜ | |
@@ -953,6 +953,105 @@ dominated by one identifier, name it, then re-run clean and report the honest nu
 6. **Discrepancy analysis — answer the three rubric questions explicitly:** did the algorithm agree with
    our intuition; what surprised us; is each surprise leakage, multicollinearity, or a genuine latent
    pattern. Answer per surprise, not in general.
+
+**✅ RESULTS (13 Aug 2026) — Dataset A complete, `SourceIP`/Dataset B demo not run locally.**
+
+`features/selection.py` extended: `gain_importance()` (handles both real-column-name and generic
+`f0/f1/...` booster key formats — this project's Pipeline doesn't configure pandas output, so XGBoost
+sees a bare ndarray and only emits the latter), `plot_feature_importance()`, `factorize_leakage_column()`,
+`compute_vif()` (via sklearn `LinearRegression`, not statsmodels — the formula is direct enough that a new
+project dependency wasn't worth adding). 20/20 unit tests passing (full `test_selection.py` file, 2B+2C
+combined). Full suite 53/53.
+
+**Figure 4.1 — gain-based importance, clean Dataset A** (`runs/figures/exf2021_feature_importance.png`):
+
+| feature | gain share |
+|---|---|
+| rand_dispersion | 0.5112 |
+| vol_total | 0.2767 |
+| struct_segments | 0.1046 |
+| vol_secondary | 0.0728 |
+| struct_max_segment | 0.0187 |
+| vol_primary | 0.0105 |
+| rand_entropy | 0.0055 |
+| all 4 B_ONLY columns | 0.0000 |
+
+The 4 B_ONLY columns get exactly zero gain — XGBoost never splits on a post-imputation constant, which is
+the same "effective dimensionality 7, not 11" finding as 2B/2D, now confirmed from the model's own
+splitting behaviour rather than just the NaN audit.
+
+**Leakage demo #2 (Dataset A, `sld`) — ran, and produced a real, unplanned finding worth its own
+sub-investigation rather than being reported as a simple replication of the plan's `SourceIP`-style
+prediction:**
+
+1. **Label-encoded `sld`** (`pd.factorize`, `runs/metrics/leakage_demo_exf2021.json`): importance
+   dominated exactly as expected (`_leakage_sld` = 75.5% of gain, vs. 51.1%/27.7% for the next two
+   features clean) — but **F1 moved from 0.8182 (clean) to only 0.8184 (dirty)**, not the "≈0.99+" the
+   plan predicted for a `SourceIP`-style memorised lookup.
+2. To find out whether that muted effect was a methodology artifact (factorize's arbitrary insertion-order
+   codes scattered thinly across ~40K total distinct `sld` values, which ordinal tree splits can't cleanly
+   isolate) or a real property of `sld`, re-ran with a **binary "is this row's `sld` one of the values ever
+   seen in attack traffic" indicator** — collapsing cardinality entirely, structurally the closest possible
+   analogue to a clean identity lookup (`runs/metrics/leakage_demo_exf2021_binary_variant.json`).
+   **Same result: F1 = 0.8184, importance now 95.4%.** This rules out the cardinality/ordinal-splitting
+   hypothesis.
+3. **The actual explanation, found by checking class overlap on the `sld` value sets directly:** of the 33
+   `sld` values appearing anywhere in attack traffic (this run's sample), **30 also appear in benign
+   traffic** — only 3 are attack-exclusive. `sld`'s low attack-side cardinality (33 vs. 40,599 on the
+   benign side) is real and matches Step 0C's D11 finding, but **unlike `SourceIP` (reportedly used
+   exclusively by the attacker in Dataset B's testbed), `sld`'s low-cardinality set is mostly *shared*
+   with benign traffic**, not exclusive to attack. A "known-attack-`sld`" lookup is therefore a noisy,
+   weakly-predictive signal, not a clean shortcut — which is exactly why the model leans on it heavily
+   (it's still the most useful available split) without it translating into a large score jump.
+
+   **This refines, rather than overturns, the original leakage classification:** `sld` is correctly
+   dropped by the production loader — its cardinality skew is real and it is still a testbed-shaped
+   artifact — but it is a structurally weaker leakage mechanism than `SourceIP`'s expected one, and the
+   difference is now quantified rather than assumed.
+
+**VIF, all 11 columns** (`runs/metrics/vif_exf2021.json`) — much more extensive multicollinearity than the
+plan anticipated (it predicted `vol_primary`/`vol_secondary` specifically):
+
+| feature | VIF | flagged |
+|---|---|---|
+| vol_primary | 128.3 | yes |
+| vol_secondary | 113.6 | yes |
+| vol_total | 136.3 | yes |
+| rand_entropy | 2.33 | no |
+| rand_dispersion | 14.4 | yes |
+| struct_segments | 100.5 | yes |
+| struct_max_segment | 168.0 | yes |
+| 4 B_ONLY columns | undefined (all-NaN) | — |
+
+6 of 7 testable columns are heavily collinear (VIF ≫ 10) — nearly all of F1 (volume) and F3 (structure)
+are redundant with each other, consistent with 2B's flagged correlation pairs (`vol_secondary`↔
+`struct_segments`, `rand_dispersion`↔`struct_segments`). Per the plan's own nuance: not acted on for
+XGBoost (tree splits are robust to collinearity — consistent with the model still using several of these
+redundant columns productively in the gain ranking above), but flagged explicitly for Ch 6's CNN/AE
+discussion, where redundant inputs matter more.
+
+**Discrepancy analysis (the three rubric questions, answered per surprise):**
+
+1. **Did the algorithm agree with intuition?** Partially. Volume + encoding-randomness (`vol_total`,
+   `rand_dispersion`) dominating together (~79% of gain) matches the plan's prior that payload volume and
+   randomness are the primary exfiltration signals. It did not expect `rand_entropy` — the specific,
+   classically-cited entropy feature — to rank last among testable features (0.55% of gain).
+2. **What surprised us, and 3. is each surprise leakage / multicollinearity / a genuine latent pattern:**
+   - `rand_entropy`'s near-zero importance: **genuine latent pattern**, not multicollinearity (its VIF is
+     2.33 — the *lowest* of all 7, i.e. it is the least redundant feature in the set) and not leakage.
+     Corroborated independently by 2B, where `rand_entropy` also showed a "negligible" Cliff's delta
+     (−0.125) — two different methods (univariate effect size, multivariate gain importance) agree this
+     feature is weaker than the security-literature prior would suggest, on this specific dataset.
+   - `sld`'s dominant-importance-but-flat-score result: **neither straightforward leakage-as-predicted nor
+     multicollinearity** — a refinement of the leakage finding itself, detailed above (partial class
+     overlap, not an exclusive identifier).
+   - Near-universal high VIF across F1/F3: **multicollinearity**, confirmed directly and consistent with
+     2B's correlation heatmap — not a surprise in kind, but larger in scope than predicted.
+
+**`SourceIP` / Dataset B demo — not run locally**, same reason as Steps 2B/2D: `data/dohbrw2020/` isn't
+populated on this machine. `features/selection.py`'s ranking/leakage/VIF functions are all
+dataset-agnostic; running the parallel demo on Dataset B is a rerun of the same calls once pointed at
+`DohBrw2020Loader(config, include_leakage_columns=True)` output.
 
 ---
 

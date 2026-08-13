@@ -1,5 +1,7 @@
 """
-Step 2B (EDA half) -- per-feature statistical evidence for Chapter 3.
+Step 2B (EDA half) + Step 2C (feature-ranking half) -- per-feature
+statistical evidence for Chapter 3, and gain-based ranking + the deliberate
+leakage demonstration + VIF for Chapter 4.
 
 Dataset-agnostic (Dataset Dependency Rule): every function here takes
 (X, y, ...) or plain arrays, never a dataset name. A thin runner script
@@ -24,6 +26,15 @@ significant regardless of whether the effect is real or trivial; Cliff's
 delta is what actually separates a meaningful behavioural difference from a
 large-sample artifact, and the report says exactly this rather than reading
 significance alone as evidence.
+
+IMPORTANCE CHOICE (Step 2C): gain-based, not the XGBoost default
+weight-based importance. Weight counts how many times a feature is split
+on, which is biased toward high-cardinality features that offer more
+distinct split points -- exactly the kind of artifact this project's own
+leakage demo exists to catch, so using it for the "legitimate" ranking
+figure would be self-undermining. Gain measures the actual average
+loss-reduction a feature's splits contribute, which is what "useful"
+should mean here.
 """
 
 from __future__ import annotations
@@ -292,3 +303,107 @@ def near_constant_report(X: pd.DataFrame) -> list[dict[str, Any]]:
             }
         )
     return report
+
+
+# ---------------------------------------------------------------------------
+# 2C.1/2C.2 -- gain-based feature importance ranking (Figure 4.1, and reused
+# for the before/after leakage demo importance charts)
+# ---------------------------------------------------------------------------
+
+def gain_importance(fitted_estimator, feature_names: list[str]) -> dict[str, float]:
+    """Gain-based importance from a fitted xgboost.XGBClassifier, normalised
+    to sum to 1 across `feature_names`. Handles both cases the booster can
+    be in: real column names (fit directly on a DataFrame) or generic
+    "f0","f1",... keys (fit on a bare ndarray -- what happens inside an
+    sklearn Pipeline unless pandas output is explicitly configured, which
+    this project's Pipeline does not do). Either way the result is keyed by
+    the real feature name, resolved positionally in the f-N case."""
+    booster = fitted_estimator.get_booster()
+    raw = booster.get_score(importance_type="gain")
+
+    resolved: dict[str, float] = {}
+    for key, gain in raw.items():
+        if key in feature_names:
+            resolved[key] = gain
+        elif key.startswith("f") and key[1:].isdigit():
+            idx = int(key[1:])
+            if idx < len(feature_names):
+                resolved[feature_names[idx]] = gain
+
+    total = sum(resolved.values())
+    if total <= 0:
+        return {name: 0.0 for name in feature_names}
+    return {name: resolved.get(name, 0.0) / total for name in feature_names}
+
+
+def plot_feature_importance(importance: dict[str, float], title: str, path: str | Path) -> None:
+    items = sorted(importance.items(), key=lambda kv: kv[1])
+    fig, ax = plt.subplots(figsize=(7, 0.4 * len(items) + 1.5))
+    ax.barh([k for k, _ in items], [v for _, v in items], color="tab:blue")
+    ax.set_xlabel("gain-based importance (normalized)")
+    ax.set_title(title)
+    fig.tight_layout()
+    _save(fig, path)
+
+
+# ---------------------------------------------------------------------------
+# 2C.3/2C.4 -- deliberate leakage demonstration support
+# ---------------------------------------------------------------------------
+
+def factorize_leakage_column(X: pd.DataFrame, leakage_col: str) -> pd.DataFrame:
+    """Label/ordinal-encode a high-cardinality categorical leakage column
+    (e.g. Dataset A's raw-text `_leakage_sld`) into arbitrary integer codes,
+    NOT one-hot: `sld` alone spans 11K+ distinct values in benign traffic,
+    so one-hot would blow up dimensionality for a column that exists only to
+    demonstrate leakage and then get dropped. The codes carry no ordinal
+    meaning, which is fine -- what the model exploits in this demonstration
+    is a pure identity lookup ("this exact code always means attack"), and
+    an arbitrary numeric label supports that exactly as well as any
+    semantically meaningful encoding would."""
+    X = X.copy()
+    codes, _ = pd.factorize(X[leakage_col])
+    X[leakage_col] = codes
+    return X
+
+
+# ---------------------------------------------------------------------------
+# 2C.5 -- multicollinearity via VIF
+# ---------------------------------------------------------------------------
+
+def compute_vif(X: pd.DataFrame, columns: list[str] | None = None) -> list[dict[str, Any]]:
+    """Variance Inflation Factor per column: VIF_i = 1 / (1 - R^2_i), where
+    R^2_i is from an OLS regression of column i on every other usable
+    column (sklearn's LinearRegression -- the formula is direct enough that
+    pulling in statsmodels as a new project dependency isn't worth it).
+    VIF is undefined for a column with zero variance or that is entirely
+    NaN (nothing to regress against or onto); those are reported explicitly
+    as `vif: None` rather than raising or silently coercing to a sentinel
+    value that could be misread as a real (low) VIF."""
+    from sklearn.linear_model import LinearRegression
+
+    columns = columns or list(X.columns)
+    usable = [c for c in columns if X[c].notna().any() and X[c].dropna().nunique() > 1]
+    sub = X[usable].dropna()
+
+    vifs: dict[str, float] = {}
+    if len(usable) >= 2 and len(sub) > len(usable):
+        for col in usable:
+            others = [c for c in usable if c != col]
+            reg = LinearRegression().fit(sub[others], sub[col])
+            r2 = reg.score(sub[others], sub[col])
+            vifs[col] = float("inf") if r2 >= 1.0 else 1.0 / (1.0 - r2)
+
+    rows = []
+    for col in columns:
+        if col in vifs:
+            rows.append({"feature": col, "vif": vifs[col], "flagged": bool(vifs[col] > 10)})
+        else:
+            rows.append(
+                {
+                    "feature": col,
+                    "vif": None,
+                    "flagged": False,
+                    "note": "undefined (constant or all-NaN column)",
+                }
+            )
+    return rows
