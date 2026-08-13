@@ -1,0 +1,85 @@
+# DRAFT -- pending Dataset B header verification and joint review with Teammate B.
+# Every hyperparameter that trains a model must be explicit here. No library
+# defaults anywhere in the codebase (PROJECT_PLAN.md Step 0D / Ch 7.3 rubric item).
+
+paths:
+  exf2021: data/exf2021
+  dohbrw2020: data/dohbrw2020
+  runs: runs
+
+sampling:
+  # Heavy-attack and benign are subsampled for speed; light-attack is NEVER
+  # subsampled (D5) -- it is the smallest class AND the entire analytical
+  # point of the project. sample_frac: 1.0 disables sampling entirely (the
+  # stretch-goal full-data run).
+  sample_frac: 0.25
+  preserve_classes: [light_attack]
+  random_state: 42
+
+framing:
+  # D4 + D8: "hard" balances Malicious-DoH down to ~1:1 against Benign-DoH
+  # (raw data is 93% positive -- see D8 for why that's broken as a framing).
+  # "easy" is the inflated three-class collapse, reported only as a contrast
+  # case in Ch 8, never as the headline number.
+  dohbrw2020: hard
+
+cv:
+  n_splits: 5
+  shuffle: true
+  random_state: 42
+
+models:
+  xgboost:
+    n_estimators: 400
+    max_depth: 6
+    learning_rate: 0.05
+    subsample: 0.8
+    colsample_bytree: 0.8
+    min_child_weight: 3
+    scale_pos_weight: null  # computed per dataset+framing at train time, see Step 2D
+    random_state: 42
+
+  xgboost_sensitivity_sweep:
+    max_depth: [3, 6, 9, 12]
+
+  isolation_forest:
+    n_estimators: 200
+    max_samples: 256
+    contamination: 0.2
+    max_features: 0.8
+    random_state: 42
+    n_jobs: -1
+
+  isolation_forest_sensitivity_sweep:
+    contamination: [0.05, 0.1, 0.2, 0.3]
+
+  cnn:
+    conv_filters: [32, 64]
+    kernel_size: 3
+    padding: same
+    dropout: 0.3
+    dense_units: 64
+    optimizer: adam
+    learning_rate: 0.001
+    batch_size: 256
+    early_stopping_patience: 5
+    random_state: 42
+
+  autoencoder:
+    layers: [11, 8, 4, 8, 11]
+    activation: relu
+    loss: mse
+    optimizer: adam
+    learning_rate: 0.001
+    threshold_percentile: 95  # of BENIGN TRAINING-FOLD reconstruction error only
+    random_state: 42
+
+cascade:
+  llm_lower: 0.35
+  llm_upper: 0.65
+  max_llm_calls: 200
+
+llm:
+  # Step 3D is DEFERRED BY DEFAULT (D7) -- see PROJECT_PLAN.md Sync 4.
+  model: meta-llama/Llama-3.1-8B-Instruct
+  timeout_s: 30

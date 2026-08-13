@@ -76,6 +76,7 @@ consistent, and so neither teammate silently reverts one.
 | **D8** | Hard framing subsamples **Malicious-DoH down to ~19,807** (1:1 vs Benign-DoH) | Unbalanced, "hard" framing is **93% positive**: always-malicious scores F1 = 0.962, PR-AUC baseline is 0.93, SMOTE would oversample *benign*, and `scale_pos_weight` drops below 1. The needle-in-a-haystack framing Ch 7.2 requires is inverted |
 | **D9** | F1 columns renamed `vol_primary` / `vol_secondary` / `vol_total` | The original `vol_mean`/`vol_max`/`vol_dispersion` names were aspirational — neither dataset supplies mean/max/dispersion. `FQDN_count` and `FlowBytesSent` are both cumulative, so `vol_total` is an honest pairing |
 | **D10** | Deep learning framework: **PyTorch (CPU)** | ~200 MB, no Windows/CUDA friction, explicit training loops that read well in the report. Both models are tiny |
+| **D11** | EXF-2021 real file layout **locked** (13 Aug, header-verified) — see full writeup below and in `runs/metrics/header_reconciliation_exf2021.md` | Real files diverge from the spec in three ways: attacks/benign are pre-separated (no 60/40 unmixing needed); benign comes from **three** sources incl. an easy-to-miss top-level `Benign.zip`; `sld` is a second, worse leakage column than `SourceIP` (22 unique values in attack traffic vs. 11K–22K in benign) |
 
 ### D2 in full — the revised family map
 
@@ -178,7 +179,7 @@ Gate: **BLOCK** = gates the other person's work, gets priority · **PAR** = para
 | **PHASE 0 — SHARED CONTRACT** | | | | |
 | 0A — Repo skeleton, venv, pinned requirements | A+B | BLOCK | ⬜ | PyTorch CPU per D10 — no open decisions |
 | 0B — Dataset acquisition | A+B | BLOCK | ⬜ | **MANUAL** — UNB forms, download time is the schedule risk |
-| 0C — Header verification & schema finalisation | A+B | BLOCK | ⬜ | Locks the exact per-column arithmetic. Do NOT trust the spec over the real files |
+| 0C — Header verification & schema finalisation | A+B | BLOCK | 🟡 | **Dataset A done** (see `runs/metrics/header_reconciliation_exf2021.md` — real layout differs from spec, `sld` leakage found). **Dataset B still pending** |
 | 0D — `schema/unified.py`, `ingestion/base.py`, `registry.py`, `config.yaml` | A+B | BLOCK | ⬜ | The interface every later step imports |
 | **SYNC 1** — contract agreed, skeleton pushed, both pull | A+B | BLOCK | ⬜ | |
 | **PHASE 1 — INGESTION** | | | | |
@@ -326,7 +327,8 @@ so mirror use is legitimate; concealing it is not.
 ---
 
 ### Step 0C — Header verification & schema finalisation 🔴
-**Owner: A+B · Gate: BLOCKING · Est: 1.25 h · Files: `notebooks/00_header_check.ipynb` or `scripts/header_check.py`**
+**Owner: A+B · Gate: BLOCKING · Est: 1.25 h · Files: `runs/metrics/header_reconciliation_*.md`**
+**Status: Dataset A ✅ VERIFIED 13 Aug · Dataset B ⬜ still pending — do not skip it because A's half is done**
 
 **What this means (plain English).**
 This is the step that saves the project. My written spec lists what the columns *should* be — but that
@@ -337,21 +339,16 @@ spec and the spec is wrong, every downstream step is built on sand.
 So: open the files, print what's really there, and reconcile against the plan **before writing a single
 loader**. Then we lock the exact arithmetic for each of the 11 output columns.
 
-**What Claude should do.**
-1. Write a throwaway script that, for every CSV in `data/`:
+**What Claude should do (Dataset B — still to do).**
+1. Write a throwaway script that, for every CSV in `data/dohbrw2020/`:
    - prints `df.shape`, `df.columns.tolist()`, `df.dtypes`
    - prints `df.head(3)` transposed so long rows stay readable
    - prints `df.isna().sum()` and `df.nunique()` per column
    - prints the value counts of any candidate label column
-2. **Reconcile and report discrepancies as a table** — spec name vs. actual name vs. dtype vs. verdict.
-   Do not silently adapt. Every rename gets written down; it goes in Chapter 5 as evidence of the
-   harmonisation work.
+2. **Reconcile and report discrepancies as a table** — spec name vs. actual name vs. dtype vs. verdict,
+   the same way Dataset A's was done (see below). Do not silently adapt. Every rename gets written down;
+   it goes in Chapter 5 as evidence of the harmonisation work.
 3. **Resolve these specific known unknowns:**
-   - **EXF-2021 `sld` and `subdomain`:** are they raw domain *strings* or numeric counts? If strings →
-     drop them (memorisable lookup key, per the leakage audit). If numeric → keep. **Verify, don't assume.**
-   - **EXF-2021 label column:** what is it actually called, and how are heavy/light/benign encoded? We
-     need the heavy/light distinction preserved as metadata for the light-class error analysis, even
-     though `y` itself is binary.
    - **DoHBrw-2020 label columns:** confirm the exact strings for `Malicious-DoH` / `Benign-DoH` /
      `non-DoH`, and confirm which column carries the DoH/non-DoH split versus the malicious/benign split.
      The dual-framing flag (D4) depends on getting this exactly right.
@@ -359,33 +356,64 @@ loader**. Then we lock the exact arithmetic for each of the 11 output columns.
      `DestinationPort`, `TimeStamp`. We need `SourceIP` retained *temporarily* for the leakage demo in
      Step 2C, so the loader takes a `include_leakage_columns=False` flag rather than dropping them
      unconditionally at read time.
-4. **Lock the per-column arithmetic.** This is the deliverable of 0C. The table below is my **proposal**,
-   not a decision — finalise it against the real headers and write the final version into the docstring
-   of `schema/unified.py`.
+   - Given what Dataset A's check turned up (see below), **do not assume Dataset B's file layout matches
+     the spec either.** Check the real folder/zip structure before writing `dohbrw2020.py`, the same way
+     we had to for `exf2021.py`.
+4. **Verification:** save a `runs/metrics/header_reconciliation_dohbrw2020.md` in the same format as
+   Dataset A's (below). This is a Chapter 5 figure, not throwaway output.
 
-   | Unified column | Family | Role | Dataset A (proposed) | Dataset B (proposed) |
-   |---|---|---|---|---|
-   | `vol_primary` | F1 | INTERSECTION | `len` | `PacketLengthMean` |
-   | `vol_secondary` | F1 | INTERSECTION | `subdomain_length` | `PacketLengthMedian` |
-   | `vol_total` | F1 | INTERSECTION | `FQDN_count` | `FlowBytesSent` |
-   | `rand_entropy` | F2 | INTERSECTION | `entropy` | `PacketLengthCoefficientofVariation` |
-   | `rand_dispersion` | F2 | INTERSECTION | `(numeric + special + upper) / len` | `log1p(PacketLengthVariance)` |
-   | `struct_segments` | F3 | INTERSECTION | `labels` | `PacketLengthMode` |
-   | `struct_max_segment` | F3 | INTERSECTION | `labels_max` | `PacketLengthStandardDeviation` |
-   | `time_central` | F4 | B_ONLY | `NaN` | `PacketTimeMean` |
-   | `time_dispersion` | F4 | B_ONLY | `NaN` | `PacketTimeStandardDeviation` |
-   | `time_skew` | F4 | B_ONLY | `NaN` | `PacketTimeSkewFromMedian` |
-   | `disp_uniqueness` | F5 | B_ONLY | `NaN` | `FlowSentRate` |
+---
 
-   ✅ **The F1 naming question is resolved (D9).** The original `vol_mean` / `vol_max` / `vol_dispersion`
-   names were aspirational — neither dataset actually supplies a mean, a max, and a dispersion, and on
-   the B side packet-length *spread* is already claimed by F2. The columns are now named for what they
-   really are: a primary volume measure, a secondary one, and a cumulative total. `FQDN_count` and
-   `FlowBytesSent` are both cumulative measures, so `vol_total` is a genuine semantic pairing rather
-   than a fudge. Nothing here is left open into Phase 1.
+**✅ Dataset A (EXF-2021) — DONE. Full findings in `runs/metrics/header_reconciliation_exf2021.md`.**
+Summary of what changed from the spec, so 1A and 2C can be written against reality rather than the
+original assumptions:
 
-5. **Verification:** produce one markdown table of reconciled headers, save it to
-   `runs/metrics/header_reconciliation.md`. This is a Chapter 5 figure, not throwaway output.
+1. **File layout differs from the spec.** Attacks and benign live in **already-separate files** (better
+   than the assumed 60/40 in-file mix — no unmixing needed), but attacks are further split by exfiltrated
+   payload type (`audio`/`compressed`/`exe`/`image`/`text`/`video`, 6 files each for heavy and light), and
+   **benign comes from three separate sources**: `heavy_benign/` (3 files), `light_benign/` (1 file), and
+   an easy-to-miss **top-level `Benign.zip`** that sits as a sibling to both attack folders in the UNB
+   browser UI rather than nested inside either (2 files, ~221K rows — over a third of total benign volume;
+   skipping it silently would have halved the benign population). `y` and `attack_subclass` are derived
+   entirely from **which file a row came from**, not from any column in the CSV.
+2. **Columns match the spec exactly**: the 14 stateless features, plus `timestamp` (not in the unified
+   schema — wall-clock capture time, no B-side equivalent to intersect against — dropped at load time).
+   Identical across all 16 real files, verified programmatically.
+3. **Real row counts are lower than the spec's stated totals** (757,211 vs. 1,019,318) — documented as a
+   genuine discrepancy rather than chased to match; we proceed with the real, verified counts. Positive
+   rate at these counts ≈ 38.9%, closer to balanced than the "needle in a haystack" framing implies —
+   noted for Ch 7.2 alongside the DoH base-rate paragraph (Ch 8.2b).
+4. **Leakage audit resolved, plus one new finding (D11):**
+   - `subdomain` is `int64 ∈ {0,1}` — a boolean has-subdomain flag, **not** raw text. Keep as-is.
+   - `sld` is confirmed raw text (real hostnames, NetBIOS-encoded strings) — **drop it**, per the
+     original leakage rule.
+   - **New:** `sld` cardinality is class-skewed — **22 unique values** in attack traffic vs.
+     **11,134–22,153** in the three benign sources. Structurally identical to the `SourceIP` leakage
+     already planned for Dataset B. **Step 2C should run a matching leakage demonstration for `sld`**
+     (once included, once dropped), mirroring the `SourceIP` demo — see the updated Step 2C below.
+5. Only `longest_word` has NaN, and only in benign rows. Handled by the Pipeline's median imputer — not
+   a loader concern.
+
+**Locked per-column arithmetic — supersedes the draft table this section originally had:**
+
+| Unified column | Family | Role | Dataset A (**locked**) | Dataset B (still proposed — verify at 0C) |
+|---|---|---|---|---|
+| `vol_primary` | F1 | INTERSECTION | `len` | `PacketLengthMean` |
+| `vol_secondary` | F1 | INTERSECTION | `subdomain_length` | `PacketLengthMedian` |
+| `vol_total` | F1 | INTERSECTION | `FQDN_count` | `FlowBytesSent` |
+| `rand_entropy` | F2 | INTERSECTION | `entropy` | `PacketLengthCoefficientofVariation` |
+| `rand_dispersion` | F2 | INTERSECTION | `(numeric + special + upper) / len` — guard `len == 0` | `log1p(PacketLengthVariance)` |
+| `struct_segments` | F3 | INTERSECTION | `labels` | `PacketLengthMode` |
+| `struct_max_segment` | F3 | INTERSECTION | `labels_max` | `PacketLengthStandardDeviation` |
+| `time_central` | F4 | B_ONLY | `NaN` | `PacketTimeMean` |
+| `time_dispersion` | F4 | B_ONLY | `NaN` | `PacketTimeStandardDeviation` |
+| `time_skew` | F4 | B_ONLY | `NaN` | `PacketTimeSkewFromMedian` |
+| `disp_uniqueness` | F5 | B_ONLY | `NaN` | `FlowSentRate` |
+
+Dropped from Dataset A: `timestamp` (not in schema), `sld` (leakage — kept only behind
+`include_leakage_columns=True` for the Step 2C demo, mirroring Dataset B's `SourceIP` handling).
+
+✅ **The F1 naming question (D9) is resolved** — see the Key Design Decisions table above.
 
 ---
 
@@ -524,10 +552,24 @@ inventing values. That's not laziness — the missingness *is* the finding.
 
 **What Claude should do.**
 1. Implement `Exf2021Loader(AbstractLoader)`.
-2. Read the stateless CSVs. Concatenate heavy/light/benign into one frame, adding an
-   `attack_subclass` column with values `heavy_attack` / `light_attack` / `benign`.
-3. **Leakage guard:** if 0C found `sld` / `subdomain` to be raw strings, drop them and record the drop
-   in `meta["dropped_columns"]`. If numeric, keep and note that too.
+2. **Read per the real layout locked in Step 0C** (not the spec's original assumption of pre-mixed
+   60/40 files):
+   - Attack rows: glob `stateless_features-heavy_*.pcap.csv` (6 payload-type files) and
+     `stateless_features-light_*.pcap.csv` (6 payload-type files); concatenate each group, tagging
+     `attack_subclass = "heavy_attack"` / `"light_attack"`. The payload type (audio/exe/text/...) is not
+     part of `UNIFIED_COLUMNS` — keep it in `meta` only, as a bonus dimension for error analysis if time
+     allows, never as a training feature.
+   - Benign rows: concatenate **all three** sources — `heavy_benign/Benign/*.pcap.csv` (3 files),
+     `light_benign/Benign/*.pcap.csv` (1 file), and `top_level_benign/Benign/*.pcap.csv` (2 files).
+     **Do not skip the top-level source** — it's ~221K rows, over a third of total benign volume, and
+     it's the one that's easy to miss because it sits as a folder sibling rather than nested inside
+     either attack folder.
+   - `y = 1` for both attack groups, `y = 0` for all benign rows regardless of source.
+3. **Leakage guard (locked at 0C):** drop `sld` unconditionally (raw text + class-skewed cardinality —
+   22 unique values in attack traffic vs. 11K–22K in benign, see D11) unless
+   `include_leakage_columns=True` for the Step 2C demo. Drop `timestamp` unconditionally (not part of
+   the unified schema). Keep `subdomain` — confirmed to be a boolean flag, not raw text. Record every
+   drop in `meta["dropped_columns"]`.
 4. **Subsampling (D5) — inside the loader, so nothing downstream knows it happened:**
    ```python
    # Light attack is never sampled: it is the smallest class AND the analytical
@@ -772,35 +814,48 @@ traffic. Not "entropy should be higher" — an actual statistic with an actual p
 
 ---
 
-### Step 2C — Feature ranking + the deliberate leakage demonstration → **Chapter 4**
-**Owner: A · Gate: PARALLEL · Est: 2.0 h · Files: `features/selection.py` (ranking half)**
+### Step 2C — Feature ranking + the deliberate leakage demonstration (×2) → **Chapter 4**
+**Owner: A · Gate: PARALLEL · Est: 2.5 h (+0.5 h vs. original estimate — now two leakage demos, not one) · Files: `features/selection.py` (ranking half)**
 
 **What this means (plain English).**
 Two jobs. First, let a tree model rank the features by usefulness and compare that ranking against what
 we *expected* as security analysts — agreements and surprises both need explaining.
 
-Second, the set-piece: **we cheat on purpose, then catch ourselves.** We train a model on Dataset B with
-the `SourceIP` column left in. It will score nearly perfectly, because in the lab that produced this data
-the attacker always used the same IP — so the model just memorises "this IP = attack." That is not
-detection, it is a lookup table, and it is exactly the artifact the rubric asks us to diagnose. We show
-the fake score, show the feature-importance chart dominated by one identifier, name it, then re-run
-clean and report the honest number.
+Second, the set-piece: **we cheat on purpose, then catch ourselves — twice, once per dataset.** We train
+a model on Dataset B with the `SourceIP` column left in. It will score nearly perfectly, because in the
+lab that produced this data the attacker always used the same IP — so the model just memorises "this IP
+= attack." Dataset A has its own version of the same trap, found during Step 0C's header check: `sld`
+takes only **22 distinct values** in attack traffic but **11,134–22,153** in benign — a model could
+trivially separate the classes by memorising which of 22 fixed testbed values `sld` holds, no different
+in kind from `SourceIP`. Neither is real detection, both are lookup tables, and both are exactly the
+artifact the rubric asks us to diagnose. We show the fake score, show the feature-importance chart
+dominated by one identifier, name it, then re-run clean and report the honest number — for both.
 
 **What Claude should do.**
 1. Fit XGBoost inside the Pipeline; extract **gain-based** importance (not the default weight-based —
    weight counts splits and is biased toward high-cardinality features; say so in the chapter).
 2. Horizontal bar chart of all 11 features, both datasets. This is Figure 4.1.
-3. **Leakage demonstration (run once, on Dataset B, `include_leakage_columns=True`):**
+3. **Leakage demonstration #1 (Dataset B, `include_leakage_columns=True`):**
    - Train, report F1 / PR-AUC — expect ≈0.99+
    - Plot importance; expect `SourceIP` to dominate
    - Re-run with the identifiers dropped; report the honest F1 / PR-AUC
    - Produce a two-row before/after table and one paragraph naming it as a testbed artifact
-   - Save to `runs/metrics/leakage_demo.json`
-4. **Multicollinearity:** compute VIF across the 11 columns. Expect `vol_primary` / `vol_secondary` to be
+   - Save to `runs/metrics/leakage_demo_dohbrw2020.json`
+4. **Leakage demonstration #2 (Dataset A, `include_leakage_columns=True`) — added after the 0C header
+   check surfaced the `sld` cardinality skew (D11), not in the original spec:**
+   - Train with `sld` included (one-hot or target-encoded — note the encoding choice, since `sld` isn't
+     numeric); report F1 / PR-AUC and expect a similarly inflated score
+   - Plot importance; expect `sld` to dominate
+   - Re-run with `sld` dropped (the production loader default); report the honest F1 / PR-AUC
+   - Same two-row before/after table format as #1 — the parallel structure is itself the point, it shows
+     the *same lesson* recurring under a *different mechanism*, which is a stronger Ch 4 narrative than
+     either demo alone
+   - Save to `runs/metrics/leakage_demo_exf2021.json`
+5. **Multicollinearity:** compute VIF across the 11 columns. Expect `vol_primary` / `vol_secondary` to be
    correlated on both sides. Report VIF > 10 as flagged, and discuss whether to act (for tree models,
    usually not — trees are robust to collinearity; for the CNN and AE it matters more). That nuance is
    worth a point.
-5. **Discrepancy analysis — answer the three rubric questions explicitly:** did the algorithm agree with
+6. **Discrepancy analysis — answer the three rubric questions explicitly:** did the algorithm agree with
    our intuition; what surprised us; is each surprise leakage, multicollinearity, or a genuine latent
    pattern. Answer per surprise, not in general.
 
@@ -1273,11 +1328,11 @@ missing**, and AI fingerprints without logs are penalised as undisclosed use.
 |---|---|---|---|---|
 | Phase 0 (joint) | 4.0 | 4.0 | 4.0 | Identical — worked together |
 | Phase 1 — Ingestion | 2.0 | 3.25 | 3.25 | B carries `main.py` + dual framing |
-| Phase 2 — Analysis & models | 7.75 | 6.75 | 6.75 | A: 2A 1.25 + **2A′ 0.75** + 2B 2.5 + 2C 2.0 + 2D 1.25. B carries three models |
+| Phase 2 — Analysis & models | 8.25 | 6.75 | 6.75 | A: 2A 1.25 + **2A′ 0.75** + 2B 2.5 + **2C 2.5** (two leakage demos) + 2D 1.25. B carries three models |
 | Phase 3 — Ensemble & forensics | 4.0 | **2.0** | 4.5 | 3A + 3B for A; 3C only for B unless 3D returns |
 | Phase 4 — Report | 8.75 | 8.5 | 8.5 | A: Ch 1,2,3,4,8.1–8.3, Exec. B: Ch 5,6,7,8.4,App + assembly |
 | Phase 5 — Submission | 1.0 | 1.0 | 1.0 | Joint |
-| **Total** | **27.5 h** | **25.5 h** | 28.0 h | **52 / 48 split** at baseline |
+| **Total** | **28.0 h** | **25.5 h** | 28.0 h | **52.5 / 47.5 split** at baseline |
 
 Well inside the 60/40 requirement either way.
 
