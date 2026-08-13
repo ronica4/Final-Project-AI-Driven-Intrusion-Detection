@@ -193,7 +193,7 @@ Gate: **BLOCK** = gates the other person's work, gets priority · **PAR** = para
 | **2A′ — `evaluation/metrics.py` shared harness + JSON schema** | A | **BLOCK** | ✅ | **B unblocked** — 2E, 2F, 2G can now import it. Verified end-to-end against real Dataset A: aggregate confusion matrix sums exactly to the true class counts (115,714/105,601), confirming CV aggregation is correct |
 | 2B — EDA + statistical evidence per feature → **Ch 3** | A | PAR | ⬜ | |
 | 2C — Feature ranking + **`SourceIP` leakage demo** → **Ch 4** | A | PAR | ⬜ | |
-| 2D — XGBoost + `max_depth` sweep | A | PAR | ⬜ | Harness moved to 2A′ — 2D is no longer on B's critical path |
+| 2D — XGBoost + `max_depth` sweep | A | PAR | ✅ | Dataset A done: F1=0.818 vs. majority-baseline F1=0.0; sweep flat across depth 3–12 (F1/FPR move <0.001) — see writeup below. `models/supervised.py` is dataset-agnostic and fully tested; Dataset B run is a one-call rerun, done as soon as it's run on a machine that has `data/dohbrw2020/` (B's Step 1B landed mid-Step-2D, code-ready, just not run locally by A — data/ is gitignored per teammate) |
 | 2E — Isolation Forest + `contamination` sweep | B | PAR | ⬜ | |
 | 2F — 1D-CNN + Autoencoder | B | PAR | ⬜ | |
 | 2G — Cross-dataset transfer + shift plots + **ablation** → **Ch 5** | B | PAR | ⬜ | Needs 2A′ harness + A's trained XGBoost (Sync 3). Uses `families=F1_only` and `intersection` |
@@ -924,6 +924,57 @@ model that says "benign" every single time scores 95% on an imbalanced set while
 4. **Sensitivity sweep:** `max_depth ∈ {3, 6, 9, 12}`; plot F1 and FPR against depth for both datasets.
    Interpret it — where does it start overfitting, and how do you know?
 5. **Verification:** metrics JSONs exist for all three runs; the sweep figure is saved and captioned.
+
+**✅ RESULTS (13 Aug 2026) — Dataset A complete, Dataset B blocked.**
+
+`models/supervised.py` built: `compute_scale_pos_weight()`, `build_xgboost()` (every hyperparameter
+read from `config.yaml`, `max_depth` overridable for the sweep), `run_xgboost()` (projects via
+`schema.project()`, builds the pipeline with **`use_smote=False`** — SMOTE and `scale_pos_weight` both
+correct for the same imbalance, per Step 2A point 3, and using both would double-compensate — then scores
+through `evaluation.metrics.evaluate()`), `sensitivity_sweep()`, `plot_sensitivity()`. 8/8 unit tests
+passing (`tests/test_supervised.py`), including a structural check that the built pipeline has no `smote`
+step. Full suite 33/33.
+
+Ran against real Dataset A (`families="full"`, matching Step 2F's CNN convention so every model shares
+one input shape per dataset — the four `B_ONLY` columns are confirmed all-NaN → imputed to a constant,
+recorded as `b_only_columns_all_nan: true` in the result JSON, so effective dimensionality is honestly 7,
+not 11):
+
+- **221,315 rows**, positive_rate 0.4772, `scale_pos_weight` computed at 1.0958.
+- **Baseline** (`max_depth=6`, locked config): F1 = **0.8182**, precision 0.6926, recall 0.9995,
+  PR-AUC 0.6927, ROC-AUC 0.7975, **FPR 0.4048** — vs. majority-baseline F1 = 0.0 (majority class is
+  benign). Recall is near-total but FPR is high: the model over-flags roughly 2 in 5 benign rows.
+  Saved: `runs/metrics/xgboost_exf2021_full.json`.
+- **Sensitivity sweep**, `max_depth ∈ {3, 6, 9, 12}`:
+
+  | depth | F1 | FPR |
+  |---|---|---|
+  | 3 | 0.8181 | 0.4049 |
+  | 6 | 0.8182 | 0.4048 |
+  | 9 | 0.8182 | 0.4049 |
+  | 12 | 0.8182 | 0.4049 |
+
+  **Interpretation (Ch 6 material):** essentially flat — F1/FPR move by <0.001 across the entire depth
+  range, so there is no visible overfit-onset within {3, 6, 9, 12} to point to. Read alongside the high,
+  depth-invariant FPR, the honest story is that depth isn't the bottleneck: on Dataset A's 7 informative
+  numeric features (F1–F3; the other 4 are constant), 400 boosted trees at depth 3 already extract
+  essentially everything an axis-aligned split model can extract from that feature set. The ceiling here
+  is feature information content, not model capacity — going deeper doesn't help because there isn't more
+  structure in 7 continuous features for extra depth to find, and it doesn't hurt because there isn't
+  enough capacity being added to memorise noise at n≈221K. This matches the same FPR (~0.40) independently
+  seen from the plain LogisticRegression smoke test in Step 2A′, which is corroborating, not
+  coincidental — it says the ~40% FPR is a property of the feature set on this data, not an XGBoost
+  quirk. Saved: `runs/metrics/xgboost_exf2021_depth_sweep.json` (+ per-depth full `evaluate()` results),
+  figure `runs/metrics/xgboost_exf2021_depth_sweep.png`.
+- **Dataset B (hard + easy framing) — not yet run.** B's Step 1B (`ingestion/dohbrw2020.py`) landed and
+  was pulled mid-way through this step — `DohBrw2020Loader(config, framing="hard"|"easy")` is registered
+  and ready. The blocker is now purely data locality, not code or the loader: `data/` is gitignored and
+  each teammate only has their own dataset downloaded locally (A has `exf2021`, not `dohbrw2020`).
+  `models/supervised.py` needs zero changes to run Dataset B — it's dataset-agnostic by construction —
+  the remaining work is literally
+  `run_xgboost(*DohBrw2020Loader(config, framing="hard").load(), config, families="full")` (and again for
+  `"easy"`), run on whichever machine actually has `data/dohbrw2020/` populated. Natural to do at Sync 3
+  or by B directly.
 
 ---
 
