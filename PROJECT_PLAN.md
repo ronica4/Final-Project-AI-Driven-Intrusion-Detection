@@ -199,7 +199,7 @@ Gate: **BLOCK** = gates the other person's work, gets priority · **PAR** = para
 | 2G — Cross-dataset transfer + shift plots + **ablation** → **Ch 5** | B | PAR | ⬜ | Needs 2A′ harness + A's trained XGBoost (Sync 3). Uses `families=F1_only` and `intersection` |
 | **SYNC 3** — four models trained, both datasets, both framings | A+B | BLOCK | ⬜ | |
 | **PHASE 3 — ENSEMBLE & FORENSICS** | | | | |
-| 3A — Sample-level FN/FP forensics → **Ch 8.1** | A | PAR | ⬜ | |
+| 3A — Sample-level FN/FP forensics → **Ch 8.1** | A | PAR | ✅ | Dataset A done: **plan's headline expectation did NOT hold** — light recall (99.95%) ≈ heavy recall (99.94%), not "heavy ≫ light." Real bottleneck is FPR (46,846 FPs vs. 58 FNs). Concrete FN/FP examples pulled via `sld` (interpretability only). Cross-model overlap (XGBoost vs. LogReg stand-in): FN overlap only 10%, FP overlap 99% — reshapes the Ch 8.4 cascade argument. **Changes the target for Step 3B — flagged for discussion before proceeding.** See writeup below |
 | 3B — **Iterative optimisation: before/after experiment** | A | PAR | ⬜ | Light-class recall. One variable. One table |
 | 3C — `ensemble/cascade.py` → **Ch 8.4** | B | PAR | ⬜ | |
 | 3D — `ensemble/llm_arbiter.py` → **Bonus** | B | PAR | ⬜ **DEFERRED** | **Not started by default** (D7). Add-back decision is an explicit agenda item at Sync 4 |
@@ -1272,6 +1272,80 @@ with per-subclass recall numbers is a much stronger finding than any aggregate F
 5. **False positives:** what benign traffic looks like exfiltration? Expect CDN domains with long
    random-looking subdomains and DNS service-discovery patterns. Name concrete examples.
 6. Save everything to `runs/metrics/error_analysis_<model>_<dataset>.json`.
+
+**✅ RESULTS (13 Aug 2026) — Dataset A complete, real headline different from the plan's prediction.**
+
+`evaluation/error_analysis.py` built: `out_of_fold_predictions()` (same clone-per-fold leakage discipline
+as `evaluate()`, but returns per-row predictions instead of aggregated metrics — `evaluate()`'s frozen
+schema deliberately never exposes row-level output, so this adds a sibling function rather than changing
+it), `per_subclass_recall()`, `top_confident_errors()`, `class_medians()`, `nearest_class_by_features()`,
+`cross_model_failure_overlap()`, `analyse_errors()` (orchestrator), `save_error_analysis()`. 8/8 unit tests
+passing, hand-verified (exact FN/FP ordering by proba, hand-computed recall, hand-computed overlap
+fractions). Full suite 61/61.
+
+**The plan's headline expectation ("light exfiltration is where the models fail," "expect heavy recall ≫
+light recall") did NOT hold on Dataset A, and this is reported as the real finding rather than
+reframed to fit the prediction:**
+
+| subclass | n positive | n detected | recall |
+|---|---|---|---|
+| heavy_attack | 62,918 | 62,881 | 99.94% |
+| light_attack | 42,683 | 42,662 | 99.95% |
+
+Recall is statistically indistinguishable between the two subclasses — if anything light is marginally
+*higher*. **The actual bottleneck is false positives, not false negatives:** only 58 total false negatives
+across both subclasses, against **46,846 false positives** (overall FPR 40.48%, matching 2D/2A′'s
+aggregate numbers exactly, which is the expected cross-check). This same "near-total recall, ~40% FPR"
+profile was independently produced by three separate models across this project now (the 2A′ LogReg smoke
+test, 2D's XGBoost, and this step's fresh LogReg run) — strong triangulated evidence this is a genuine
+property of Dataset A's F1–F3 feature set on this data, not a modelling artifact of any one classifier.
+
+**Concrete false positives** (benign traffic the model was ≥83% confident was attack) — pulled `sld` for
+interpretability only, never as a feature (`X_leak.iloc[idx]['_leakage_sld']`, same-config-same-ordering
+loader call): **`microsoft`, `windows`, `192` (a numeric/IP-shaped subdomain), `atester`** — legitimate
+Windows/Microsoft system and telemetry-style domains whose queries happen to be large and structurally
+segmented (`vol_primary`/`vol_secondary`/`vol_total`/`struct_segments` all land on the "attack" side of
+the class medians). This is close to the plan's prediction in spirit (structurally unusual "service"
+domains), if not literally CDN cache-busting subdomains.
+
+**Concrete false negatives** (attacks the model was ≥99.9% confident were benign) — and this is the more
+interesting real story: **`msftncsi`, `gstatic`, `googleapis`, `office`, `wireshark`**. These are
+well-known Microsoft/Google service domains (NCSI connectivity-check, static/API CDN) — exactly the kind
+of ubiquitous, trusted-looking domain an attacker would deliberately pick to camouflage an exfiltration
+channel, and the feature profile backs that up: nearly all 7 testable features land on the "benign" side
+of the class medians for these rows. Both `light_attack` and `heavy_attack` subclasses appear here, so
+this camouflage pattern isn't unique to the slow/stealthy subclass. This is a stronger, more concrete Ch
+8.1 narrative than a generic "light attacks blend in" claim would have been.
+
+**Cross-model comparison** — XGBoost vs. a LogisticRegression run as a **temporary stand-in for B's CNN
+(Step 2F, not yet landed)**, clearly labelled as such and to be redone once the real CNN results exist:
+
+| error type | XGBoost n | LogReg n | overlap | overlap / union |
+|---|---|---|---|---|
+| false negatives | 58 | 366 | 40 | 10.4% |
+| false positives | 46,846 | 46,901 | 46,692 | 99.2% |
+
+**This is a genuinely useful, nuanced result for Ch 8.4, not just a rubric checkbox:** false-negative
+overlap is low (10%) — the two model families miss largely *different* attacks, which is exactly the
+empirical justification the cascade needs. But false-positive overlap is nearly total (99%) — both a tree
+model and a linear model flag almost the identical set of benign rows as suspicious. **That means
+ensembling will likely help recall (different models catch different attacks) but will NOT fix the FPR
+problem (all models agree on the same false alarms)**, because the issue is upstream in what the F1–F3
+feature set represents, not in any one model's decision boundary. This nuance belongs directly in Ch 8.4's
+cascade discussion, and should be re-verified once B's real CNN lands (a linear model and a tree model
+agreeing isn't as strong evidence as a linear model and a deep model agreeing).
+
+**🔴 IMPLICATION FOR STEP 3B — flagged for discussion, not yet acted on.** Step 3B's plan targets "light
+exfiltration false negatives" via a threshold-lowering experiment. That diagnosis doesn't hold here: light
+recall is already 99.95%, there is essentially no light-class recall gap left to close, and lowering the
+threshold further would only add to an already-large FPR problem. The failure this data actually supports
+fixing is the mirror image — **reduce the 40% FPR** (e.g. *raising* the decision threshold, trading a
+little of the already-excellent recall for a large FPR improvement) — same rigor (one variable, one
+before/after table, report the honest cost), different target, justified directly by this step's
+diagnosis rather than the plan's original assumption.
+
+Saved: `runs/metrics/error_analysis_xgboost_exf2021.json`, `runs/metrics/error_analysis_logreg_standin_exf2021.json`,
+`runs/metrics/cross_model_failure_overlap_exf2021.json`.
 
 ---
 
