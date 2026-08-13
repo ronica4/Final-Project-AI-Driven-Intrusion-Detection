@@ -189,7 +189,7 @@ Gate: **BLOCK** = gates the other person's work, gets priority · **PAR** = para
 | 1C — `main.py` CLI wiring + end-to-end smoke test | B | PAR | ⬜ | B owns `main.py` from here on |
 | **SYNC 2** — both loaders pass `validate_schema()` on real data | A+B | BLOCK | ⬜ | |
 | **PHASE 2 — ANALYSIS & MODELS** | | | | |
-| 2A — `preprocessing/pipeline.py` | A | BLOCK | ⬜ | Gates every model |
+| 2A — `preprocessing/pipeline.py` | A | BLOCK | ✅ | Gates every model. Caught + fixed a real bug: `SimpleImputer` silently dropped all-NaN `B_ONLY` columns (11→7) without `keep_empty_features=True` — would have broken the CNN/AE's fixed input width |
 | **2A′ — `evaluation/metrics.py` shared harness + JSON schema** | A | **BLOCK** | ⬜ | **Also gates B** — 2E, 2F *and* 2G all import it. Do immediately after 2A, before 2B/2C |
 | 2B — EDA + statistical evidence per feature → **Ch 3** | A | PAR | ⬜ | |
 | 2C — Feature ranking + **`SourceIP` leakage demo** → **Ch 4** | A | PAR | ⬜ | |
@@ -729,7 +729,7 @@ mentions a dataset name.
 
 ---
 
-### Step 2A — Preprocessing pipeline 🔴 BLOCKING
+### Step 2A — Preprocessing pipeline ✅ COMPLETE
 **Owner: A · Gate: BLOCKING (B cannot train until this lands) · Est: 1.25 h · Files: `preprocessing/pipeline.py`**
 
 **What this means (plain English).**
@@ -759,6 +759,20 @@ A does this first because both teammates' models depend on it.
    `mean_` differs between two different folds (proof it refits per fold), and assert the resampled
    training set is balanced while the test fold is untouched. This assertion *is* the Ch 7.2 evidence —
    save it to `runs/metrics/leakage_guard_proof.json`.
+
+✅ **Done — with one real bug caught along the way, worth documenting.** `SimpleImputer(strategy="median")`
+without `keep_empty_features=True` **silently drops** any column with zero observed values, rather than
+imputing it to a constant. On real Dataset A data this collapsed the output from 11 columns to 7 —
+the four `B_ONLY` columns (100% NaN by design, D2) vanished instead of becoming the constant-0 features
+the schema intends. Caught by actually running the pipeline against real data, not just synthetic —
+confirmed with `warnings.simplefilter("error")` that the fixed version raises zero warnings and preserves
+all 11 columns. Added `test_all_nan_column_is_preserved_not_dropped` as a permanent regression test.
+This matters beyond Dataset A: it's exactly the kind of bug that would otherwise surface three steps
+downstream as a confusing shape mismatch in the CNN/Autoencoder (Step 2F), with the real cause several
+files away from the error message.
+
+`tests/test_pipeline.py` — 6/6 passing (3 structural checks, the regression test above, the `get_cv`
+sizing guard, and the full leakage-guard proof). 18/18 across the whole suite.
 
 ---
 
