@@ -1,0 +1,22 @@
+# Raw datasets -- never committed (CIC licence permits use, not redistribution)
+data/
+
+# Experiment outputs -- metrics JSON, figures, fitted models regenerate from code
+runs/
+
+# Secrets
+.env
+
+# Python environment
+venv/
+__pycache__/
+*.pyc
+
+# Fitted models / weights
+*.pkl
+*.pt
+
+# OS/editor cruft
+.DS_Store
+.vscode/
+.idea/
