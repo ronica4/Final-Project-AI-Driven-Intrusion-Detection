@@ -12,8 +12,10 @@ See `PROJECT_PLAN.md` for the full design, decisions log, and progress tracker.
 python -m venv venv
 venv\Scripts\activate          # Windows
 pip install -r requirements.txt
-pip install torch --index-url https://download.pytorch.org/whl/cpu
 ```
+
+`requirements.txt` includes `--extra-index-url https://download.pytorch.org/whl/cpu` so `torch` resolves
+to the CPU-only build automatically (D10) — no separate install step needed.
 
 Datasets are **not** included in the repo (see `.gitignore`). Download per Step 0B of
 `PROJECT_PLAN.md` and place under:
