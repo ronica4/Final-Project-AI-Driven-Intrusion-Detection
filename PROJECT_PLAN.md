@@ -185,8 +185,8 @@ Gate: **BLOCK** = gates the other person's work, gets priority · **PAR** = para
 | **SYNC 1** — contract agreed, skeleton pushed, both pull | A+B | BLOCK | ✅ | Both pulled `3314098`, both ran `pytest` green independently |
 | **PHASE 1 — INGESTION** | | | | |
 | 1A — `ingestion/exf2021.py` | A | PAR | ✅ | Light class retained at 100% (D5). 12/12 tests passing incl. real-data integration tests |
-| 1B — `ingestion/dohbrw2020.py` | B | PAR | ⬜ | Drops 5 identifiers; dual framing flag (D4) |
-| 1C — `main.py` CLI wiring + end-to-end smoke test | B | PAR | ⬜ | B owns `main.py` from here on |
+| 1B — `ingestion/dohbrw2020.py` | B | PAR | ✅ | Drops 5 identifiers; dual framing flag (D4). Merged with A's 1A registry wiring, 19/19 relevant tests passing |
+| 1C — `main.py` CLI wiring + end-to-end smoke test | B | PAR | ✅ | Abstraction proof saved to `runs/metrics/abstraction_proof.txt`. dohbrw2020 hard/easy/intersection smoke-tested on real data; exf2021 wiring verified to fail at the correct point (no local data on B's machine) |
 | **SYNC 2** — both loaders pass `validate_schema()` on real data | A+B | BLOCK | ⬜ | |
 | **PHASE 2 — ANALYSIS & MODELS** | | | | |
 | 2A — `preprocessing/pipeline.py` | A | BLOCK | ✅ | Gates every model. Caught + fixed a real bug: `SimpleImputer` silently dropped all-NaN `B_ONLY` columns (11→7) without `keep_empty_features=True` — would have broken the CNN/AE's fixed input width |
