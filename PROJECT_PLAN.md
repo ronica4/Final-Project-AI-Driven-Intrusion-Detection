@@ -191,7 +191,7 @@ Gate: **BLOCK** = gates the other person's work, gets priority · **PAR** = para
 | **PHASE 2 — ANALYSIS & MODELS** | | | | |
 | 2A — `preprocessing/pipeline.py` | A | BLOCK | ✅ | Gates every model. Caught + fixed a real bug: `SimpleImputer` silently dropped all-NaN `B_ONLY` columns (11→7) without `keep_empty_features=True` — would have broken the CNN/AE's fixed input width |
 | **2A′ — `evaluation/metrics.py` shared harness + JSON schema** | A | **BLOCK** | ✅ | **B unblocked** — 2E, 2F, 2G can now import it. Verified end-to-end against real Dataset A: aggregate confusion matrix sums exactly to the true class counts (115,714/105,601), confirming CV aggregation is correct |
-| 2B — EDA + statistical evidence per feature → **Ch 3** | A | PAR | ⬜ | |
+| 2B — EDA + statistical evidence per feature → **Ch 3** | A | PAR | ✅ | Dataset A done: 5/7 testable features show large Cliff's delta; 2 multicollinearity pairs flagged; **light vs. heavy surprise** — see writeup below. Dataset B not run locally (same data-locality note as 2D) |
 | 2C — Feature ranking + **`SourceIP` leakage demo** → **Ch 4** | A | PAR | ⬜ | |
 | 2D — XGBoost + `max_depth` sweep | A | PAR | ✅ | Dataset A done: F1=0.818 vs. majority-baseline F1=0.0; sweep flat across depth 3–12 (F1/FPR move <0.001) — see writeup below. `models/supervised.py` is dataset-agnostic and fully tested; Dataset B run is a one-call rerun, done as soon as it's run on a machine that has `data/dohbrw2020/` (B's Step 1B landed mid-Step-2D, code-ready, just not run locally by A — data/ is gitignored per teammate) |
 | 2E — Isolation Forest + `contamination` sweep | B | PAR | ⬜ | |
@@ -852,6 +852,60 @@ traffic. Not "entropy should be higher" — an actual statistic with an actual p
 6. Noise/redundancy reduction: document which features are near-constant or redundant, and what we did.
 7. **Verification:** every figure saved to `runs/figures/` at ≥150 dpi with a descriptive filename;
    every figure gets a caption written now, while you remember what it shows.
+
+**✅ RESULTS (13 Aug 2026) — Dataset A complete, Dataset B not run locally.**
+
+`features/selection.py` built: `class_distribution_counts`/`plot_class_distribution`,
+`plot_feature_distributions` (histogram + box plot per feature, benign vs. attack overlay),
+`feature_significance_table` (Mann-Whitney U + **Cliff's delta**, not Cohen's d — chosen because it's
+derived directly from the same U statistic as the non-parametric test, so no normality assumption is
+smuggled back in through the effect size; verdict bands per Romano et al. 2006), `correlation_heatmap`,
+`three_way_breakdown` (Kruskal-Wallis + two Cliff's deltas vs. benign), `near_constant_report`. 13/13
+unit tests passing, including hand-derived Cliff's delta checks (complete separation → exactly 1.0,
+identical distributions → exactly 0.0, both independent of trusting scipy's internals). Full suite 46/46.
+
+Ran against real Dataset A (221,315 rows, all 9 figures saved to `runs/figures/` at 150 dpi):
+
+- **Significance table** (`runs/metrics/feature_significance.json`) — of the 7 testable columns
+  (F1–F3; the 4 B_ONLY columns are correctly reported `"untestable (one class entirely NaN)"`, not
+  silently skipped):
+
+  | feature | Cliff's δ | verdict |
+  |---|---|---|
+  | vol_primary | +0.242 | small |
+  | vol_secondary | +0.551 | large |
+  | vol_total | +0.564 | large |
+  | rand_entropy | −0.125 | negligible |
+  | rand_dispersion | +0.591 | large |
+  | struct_segments | +0.533 | large |
+  | struct_max_segment | −0.145 | negligible |
+
+  Every p-value rounds to 0.00e+00 at n≈221K, which is exactly the large-sample-artifact trap the plan
+  warns about — Cliff's delta is what actually says 5 of 7 features carry a large real effect and 2
+  (`rand_entropy`, `struct_max_segment`) do not, despite both being "significant."
+- **Multicollinearity** (Ch 4 candidates): `vol_secondary`↔`struct_segments` (r=0.926),
+  `rand_dispersion`↔`struct_segments` (r=0.905). Both involve `struct_segments` — worth flagging as the
+  common factor when Ch 4 discusses redundancy.
+- **Three-way breakdown, benign vs. heavy vs. light**
+  (`runs/metrics/three_way_breakdown_exf2021.json`) — **this contradicts the plan's stated
+  expectation, and is reported honestly rather than reframed to fit it.** The plan predicted light
+  would sit "much closer to benign than heavy" on these features; the real data shows light and heavy
+  are essentially equidistant from benign, with light's Cliff's delta actually marginally *larger* in
+  magnitude than heavy's on 5 of 7 features (e.g. `vol_total`: light=+0.567 vs. heavy=+0.561;
+  `rand_dispersion`: light=+0.590 vs. heavy=+0.592). All Kruskal-Wallis p-values ≈0. **Interpretation:**
+  "light" describes payload weight, not necessarily stealth in these particular stateless
+  volumetric/structural features — a light exfil session still has to chunk and encode its payload into
+  DNS labels the same way a heavy one does, so F1–F3 don't distinguish the two well. This is genuinely
+  useful for Ch 3/8: it means Step 3A's light-subclass forensics (the project's central analytical
+  claim) will need to look at *why* light attacks are still missed if they're not actually behaving more
+  benign-like on these features — the honest answer may be closer to "detection difficulty," not
+  "distributional similarity."
+- **Near-constant audit**: the 4 B_ONLY columns are exactly 100% NaN (correctly flagged
+  `near_constant: true`), all 7 testable columns have `nan_fraction: 0.0` and genuine variety (26–1,161
+  unique observed values) — no dead columns among the testable set.
+- **Dataset B — not run locally**, same reason as Step 2D: `data/dohbrw2020/` isn't populated on this
+  machine even though the loader landed. Every function above is dataset-agnostic; running it is a
+  one-call rerun once pointed at Dataset B data.
 
 ---
 
