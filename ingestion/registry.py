@@ -3,11 +3,10 @@ Plain name -> loader class registry. No dynamic imports, no plugin magic --
 a grader must be able to read this file in five seconds and know exactly
 what --dataset exf2021 resolves to.
 
-STATUS: DRAFT. References Exf2021Loader and DohBrw2020Loader, which do not
-exist yet -- they are Step 1A (Teammate A) and Step 1B (Teammate B). This
-file's import lines are commented out until those modules exist, so that
-`import ingestion.registry` doesn't fail at import time for anyone testing
-schema/unified.py or ingestion/base.py in isolation before Phase 1 starts.
+STATUS: Exf2021Loader landed (Step 1A). DohBrw2020Loader is still Step 1B
+(Teammate B) -- its import line stays commented out until that module
+exists, so `import ingestion.registry` doesn't fail at import time in the
+meantime.
 """
 
 from __future__ import annotations
@@ -15,13 +14,13 @@ from __future__ import annotations
 from typing import Type
 
 from ingestion.base import AbstractLoader
+from ingestion.exf2021 import Exf2021Loader
 
-# --- Uncomment as each loader lands (Step 1A / Step 1B) -------------------
-# from ingestion.exf2021 import Exf2021Loader
+# --- Uncomment once Step 1B lands ------------------------------------------
 # from ingestion.dohbrw2020 import DohBrw2020Loader
 
 _REGISTRY: dict[str, Type[AbstractLoader]] = {
-    # "exf2021": Exf2021Loader,
+    "exf2021": Exf2021Loader,
     # "dohbrw2020": DohBrw2020Loader,
 }
 

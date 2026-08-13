@@ -184,7 +184,7 @@ Gate: **BLOCK** = gates the other person's work, gets priority · **PAR** = para
 | 0D — `schema/unified.py`, `ingestion/base.py`, `registry.py`, `config.yaml` | A+B | BLOCK | ✅ | Fully LOCKED for both datasets. `tests/test_schema.py` 6/6 passing on both machines |
 | **SYNC 1** — contract agreed, skeleton pushed, both pull | A+B | BLOCK | ✅ | Both pulled `3314098`, both ran `pytest` green independently |
 | **PHASE 1 — INGESTION** | | | | |
-| 1A — `ingestion/exf2021.py` | A | PAR | ⬜ | Light class retained at 100% (D5) |
+| 1A — `ingestion/exf2021.py` | A | PAR | ✅ | Light class retained at 100% (D5). 12/12 tests passing incl. real-data integration tests |
 | 1B — `ingestion/dohbrw2020.py` | B | PAR | ⬜ | Drops 5 identifiers; dual framing flag (D4) |
 | 1C — `main.py` CLI wiring + end-to-end smoke test | B | PAR | ⬜ | B owns `main.py` from here on |
 | **SYNC 2** — both loaders pass `validate_schema()` on real data | A+B | BLOCK | ⬜ | |
