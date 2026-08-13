@@ -1,5 +1,5 @@
 """
-Step 3A verification. Synthetic data only, hand-computed where possible --
+Step 3A/3B verification. Synthetic data only, hand-computed where possible --
 same discipline as tests/test_metrics.py and tests/test_selection.py.
 """
 
@@ -15,12 +15,17 @@ from sklearn.model_selection import StratifiedKFold
 
 from evaluation.error_analysis import (
     analyse_errors,
+    before_after_table,
     class_medians,
     cross_model_failure_overlap,
     nearest_class_by_features,
     out_of_fold_predictions,
     per_subclass_recall,
+    plot_threshold_tradeoff,
     save_error_analysis,
+    save_optimisation_result,
+    select_threshold_min_fpr_with_recall_floor,
+    threshold_sweep,
     top_confident_errors,
 )
 
@@ -144,3 +149,85 @@ def test_analyse_errors_end_to_end_structure_and_save(tmp_path):
     path = save_error_analysis("test_model", "synthetic", result, out_dir=tmp_path)
     assert path.name == "error_analysis_test_model_synthetic.json"
     assert json.loads(path.read_text())["model_name"] == "test_model"
+
+
+# ---------------------------------------------------------------------------
+# Step 3B
+# ---------------------------------------------------------------------------
+
+# Shared fixture data for the 3B tests below: 4 positives, 4 negatives.
+# Positives score [0.9, 0.8, 0.6, 0.4]; negatives score [0.7, 0.3, 0.2, 0.1].
+_Y_TRUE_3B = [1, 1, 1, 1, 0, 0, 0, 0]
+_Y_PROBA_3B = [0.9, 0.8, 0.6, 0.4, 0.7, 0.3, 0.2, 0.1]
+
+
+def test_threshold_sweep_hand_computed_at_two_thresholds():
+    # t=0.5: predicted positive = {0.9,0.8,0.6,0.7} -> TP=3 (idx0,1,2),
+    #   FN=1 (idx3=0.4), FP=1 (idx4=0.7), TN=3 -> recall=3/4=.75, fpr=1/4=.25
+    # t=0.75: predicted positive = {0.9,0.8} -> TP=2, FN=2, FP=0, TN=4
+    #   -> recall=2/4=.5, fpr=0/4=0, precision=2/2=1.0
+    sweep = threshold_sweep(_Y_TRUE_3B, _Y_PROBA_3B, thresholds=[0.5, 0.75])
+    by_t = {r["threshold"]: r for r in sweep}
+
+    assert by_t[0.5]["recall"] == pytest.approx(0.75)
+    assert by_t[0.5]["fpr"] == pytest.approx(0.25)
+    assert by_t[0.5]["precision"] == pytest.approx(0.75)
+
+    assert by_t[0.75]["recall"] == pytest.approx(0.5)
+    assert by_t[0.75]["fpr"] == pytest.approx(0.0)
+    assert by_t[0.75]["precision"] == pytest.approx(1.0)
+
+
+def test_select_threshold_min_fpr_with_recall_floor_hand_computed():
+    sweep = [
+        {"threshold": 0.3, "recall": 0.9, "fpr": 0.5, "precision": 0.1, "f1": 0.1},
+        {"threshold": 0.5, "recall": 0.75, "fpr": 0.25, "precision": 0.5, "f1": 0.5},
+        {"threshold": 0.75, "recall": 0.5, "fpr": 0.0, "precision": 1.0, "f1": 0.6},
+    ]
+    # Both t=0.3 (recall .9) and t=0.5 (recall .75) clear a .6 floor;
+    # t=0.5 has the lower FPR (.25 < .5) so it must be selected.
+    selected = select_threshold_min_fpr_with_recall_floor(sweep, recall_floor=0.6)
+    assert selected["threshold"] == pytest.approx(0.5)
+
+
+def test_select_threshold_raises_when_floor_unreachable():
+    sweep = [{"threshold": 0.5, "recall": 0.75, "fpr": 0.25, "precision": 0.5, "f1": 0.5}]
+    with pytest.raises(ValueError):
+        select_threshold_min_fpr_with_recall_floor(sweep, recall_floor=0.99)
+
+
+def test_before_after_table_hand_computed():
+    attack_subclass = pd.Series(
+        ["heavy_attack", "heavy_attack", "light_attack", "light_attack", "benign", "benign", "benign", "benign"]
+    )
+    # y_pred_before is exactly the t=0.5 predictions from the sweep test above.
+    y_pred_before = [1, 1, 1, 0, 1, 0, 0, 0]
+
+    result = before_after_table(_Y_TRUE_3B, y_pred_before, _Y_PROBA_3B, attack_subclass, threshold_after=0.75)
+
+    # before (t=0.5): heavy both detected (recall 1.0), light 1/2 detected (recall 0.5)
+    assert result["before"]["heavy_recall"] == pytest.approx(1.0)
+    assert result["before"]["light_recall"] == pytest.approx(0.5)
+    assert result["before"]["overall_recall"] == pytest.approx(0.75)
+    assert result["before"]["fpr"] == pytest.approx(0.25)
+
+    # after (t=0.75): heavy still both detected, light now 0/2 (both scores < 0.75)
+    assert result["after"]["heavy_recall"] == pytest.approx(1.0)
+    assert result["after"]["light_recall"] == pytest.approx(0.0)
+    assert result["after"]["overall_recall"] == pytest.approx(0.5)
+    assert result["after"]["fpr"] == pytest.approx(0.0)
+
+
+def test_plot_threshold_tradeoff_writes_a_file(tmp_path):
+    sweep = threshold_sweep(_Y_TRUE_3B, _Y_PROBA_3B, thresholds=[0.3, 0.5, 0.7, 0.9])
+    path = tmp_path / "tradeoff.png"
+    plot_threshold_tradeoff(sweep, "test", path)
+    assert path.exists()
+    assert path.stat().st_size > 0
+
+
+def test_save_optimisation_result_round_trips(tmp_path):
+    results = {"before": {"threshold": 0.5}, "after": {"threshold": 0.75}}
+    path = save_optimisation_result(results, out_dir=tmp_path)
+    assert path.name == "optimisation_before_after.json"
+    assert json.loads(path.read_text()) == results

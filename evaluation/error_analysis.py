@@ -1,5 +1,6 @@
 """
-Step 3A -- sample-level forensic error analysis for Chapter 8.1.
+Step 3A -- sample-level forensic error analysis for Chapter 8.1 -- and
+Step 3B -- the before/after threshold optimisation experiment.
 
 Dataset-agnostic (Dataset Dependency Rule): every function takes an
 already-computed (y_true, y_pred, y_proba, X, meta) or index sets -- nothing
@@ -18,6 +19,17 @@ if every model was scored against literally the same row ordering -- the
 same loader call, same config, same sampling. Comparing index sets computed
 from two different loader calls (even of the "same" dataset) is meaningless
 and this module has no way to detect that mistake, so callers must ensure it.
+
+STEP 3B TARGET, PIVOTED FROM THE ORIGINAL SPEC: the plan originally targeted
+"light-class false negatives" for the before/after experiment, on the
+assumption that light recall would lag heavy recall. Step 3A's real
+diagnosis on Dataset A ruled that out -- light (99.95%) and heavy (99.94%)
+recall are statistically indistinguishable, and the actual bottleneck is
+FPR (~40%). The threshold-optimisation functions below therefore target FPR
+reduction (raise the threshold) rather than recall improvement (lower it) --
+same one-variable-at-a-time discipline, different, diagnosis-justified
+target. All of them work from OOF probabilities already computed by
+out_of_fold_predictions(); no retraining happens anywhere in this file.
 """
 
 from __future__ import annotations
@@ -25,6 +37,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 import pandas as pd
 from sklearn.base import clone
@@ -228,5 +242,140 @@ def save_error_analysis(
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"error_analysis_{model_name}_{dataset_name}.json"
+    path.write_text(json.dumps(results, indent=2))
+    return path
+
+
+# ---------------------------------------------------------------------------
+# Step 3B -- before/after threshold optimisation (see module docstring for
+# why this targets FPR, not recall -- pivoted from the original spec based
+# on Step 3A's real diagnosis).
+# ---------------------------------------------------------------------------
+
+def threshold_sweep(y_true, y_proba, thresholds=None) -> list[dict[str, Any]]:
+    """Recompute predictions at each candidate threshold from the SAME
+    out-of-fold probabilities -- a pure post-hoc decision-rule change, no
+    retraining -- and report recall/precision/F1/FPR at each. Defaults to a
+    dense 0.01-step sweep from 0.05 to 0.95."""
+    y_true = pd.Series(y_true).reset_index(drop=True)
+    y_proba = pd.Series(y_proba).reset_index(drop=True)
+    if thresholds is None:
+        thresholds = np.round(np.arange(0.05, 0.96, 0.01), 2)
+
+    rows = []
+    for t in thresholds:
+        y_pred = (y_proba >= t).astype(int)
+        tp = int(((y_true == 1) & (y_pred == 1)).sum())
+        fn = int(((y_true == 1) & (y_pred == 0)).sum())
+        fp = int(((y_true == 0) & (y_pred == 1)).sum())
+        tn = int(((y_true == 0) & (y_pred == 0)).sum())
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+        fpr = fp / (fp + tn) if (fp + tn) > 0 else 0.0
+        rows.append(
+            {
+                "threshold": float(t),
+                "recall": recall,
+                "precision": precision,
+                "f1": f1,
+                "fpr": fpr,
+            }
+        )
+    return rows
+
+
+def select_threshold_min_fpr_with_recall_floor(sweep: list[dict[str, Any]], recall_floor: float) -> dict[str, Any]:
+    """Pick the threshold minimising FPR among those meeting a minimum
+    overall-recall requirement. Raises rather than silently falling back to
+    something that doesn't meet the floor if no swept threshold qualifies --
+    that should widen the sweep or lower the floor, not be hidden."""
+    candidates = [r for r in sweep if r["recall"] >= recall_floor]
+    if not candidates:
+        raise ValueError(
+            f"No threshold in the sweep achieves recall >= {recall_floor}. "
+            f"Widen the threshold range or lower the floor."
+        )
+    return min(candidates, key=lambda r: r["fpr"])
+
+
+def plot_threshold_tradeoff(sweep: list[dict[str, Any]], title: str, path: str | Path) -> None:
+    """Recall and FPR against threshold on twin y-axes -- the trade-off
+    curve the Step 3B `t*` choice is read off of."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    thresholds = [r["threshold"] for r in sweep]
+    recalls = [r["recall"] for r in sweep]
+    fprs = [r["fpr"] for r in sweep]
+
+    fig, ax1 = plt.subplots(figsize=(7, 4))
+    ax1.plot(thresholds, recalls, color="tab:blue", label="recall")
+    ax1.set_xlabel("decision threshold")
+    ax1.set_ylabel("recall", color="tab:blue")
+    ax1.tick_params(axis="y", labelcolor="tab:blue")
+    ax1.set_ylim(0, 1.05)
+
+    ax2 = ax1.twinx()
+    ax2.plot(thresholds, fprs, color="tab:red", label="FPR")
+    ax2.set_ylabel("FPR", color="tab:red")
+    ax2.tick_params(axis="y", labelcolor="tab:red")
+    ax2.set_ylim(0, 1.05)
+
+    ax1.set_title(title)
+    fig.tight_layout()
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+
+
+def before_after_table(
+    y_true, y_pred_before, y_proba, attack_subclass, threshold_after: float
+) -> dict[str, Any]:
+    """The Step 3B two-row before/after table: threshold 0.50 (`y_pred_before`,
+    normally the model's own .predict() output) vs. the selected
+    `threshold_after`, both read off the SAME out-of-fold probabilities --
+    the model is identical in both rows, so the threshold is the only
+    variable that changed."""
+    y_true = pd.Series(y_true).reset_index(drop=True)
+    y_proba = pd.Series(y_proba).reset_index(drop=True)
+    y_pred_before = pd.Series(y_pred_before).reset_index(drop=True)
+    y_pred_after = (y_proba >= threshold_after).astype(int)
+
+    def _row(y_pred: pd.Series, threshold: float) -> dict[str, Any]:
+        subclass_recall = per_subclass_recall(y_true, y_pred, attack_subclass)
+        tp = int(((y_true == 1) & (y_pred == 1)).sum())
+        fn = int(((y_true == 1) & (y_pred == 0)).sum())
+        fp = int(((y_true == 0) & (y_pred == 1)).sum())
+        tn = int(((y_true == 0) & (y_pred == 0)).sum())
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+        fpr = fp / (fp + tn) if (fp + tn) > 0 else 0.0
+        return {
+            "threshold": float(threshold),
+            "light_recall": subclass_recall.get("light_attack", {}).get("recall"),
+            "heavy_recall": subclass_recall.get("heavy_attack", {}).get("recall"),
+            "overall_recall": recall,
+            "overall_f1": f1,
+            "fpr": fpr,
+            "confusion_matrix": [[tn, fp], [fn, tp]],
+        }
+
+    return {
+        "before": _row(y_pred_before, 0.5),
+        "after": _row(y_pred_after, threshold_after),
+    }
+
+
+def save_optimisation_result(results: dict, out_dir: str | Path = "runs/metrics") -> Path:
+    """Naming convention locked by the plan: optimisation_before_after.json."""
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / "optimisation_before_after.json"
     path.write_text(json.dumps(results, indent=2))
     return path

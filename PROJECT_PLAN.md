@@ -200,7 +200,7 @@ Gate: **BLOCK** = gates the other person's work, gets priority · **PAR** = para
 | **SYNC 3** — four models trained, both datasets, both framings | A+B | BLOCK | ⬜ | |
 | **PHASE 3 — ENSEMBLE & FORENSICS** | | | | |
 | 3A — Sample-level FN/FP forensics → **Ch 8.1** | A | PAR | ✅ | Dataset A done: **plan's headline expectation did NOT hold** — light recall (99.95%) ≈ heavy recall (99.94%), not "heavy ≫ light." Real bottleneck is FPR (46,846 FPs vs. 58 FNs). Concrete FN/FP examples pulled via `sld` (interpretability only). Cross-model overlap (XGBoost vs. LogReg stand-in): FN overlap only 10%, FP overlap 99% — reshapes the Ch 8.4 cascade argument. **Changes the target for Step 3B — flagged for discussion before proceeding.** See writeup below |
-| 3B — **Iterative optimisation: before/after experiment** | A | PAR | ⬜ | Light-class recall. One variable. One table |
+| 3B — **Iterative optimisation: before/after experiment** | A | PAR | ✅ | **Pivoted to FPR reduction** (3A ruled out a light-recall gap). Threshold sweep revealed a probability cliff (flat 0.05–0.69, collapses 0.70→0.72) — best 95%-recall-floor trade only cuts FPR 40.48%→39.72%. **Honest negative result**: threshold tuning can't fix Dataset A's FPR, strengthening the Ch 8.4 cascade argument — see writeup below |
 | 3C — `ensemble/cascade.py` → **Ch 8.4** | B | PAR | ⬜ | |
 | 3D — `ensemble/llm_arbiter.py` → **Bonus** | B | PAR | ⬜ **DEFERRED** | **Not started by default** (D7). Add-back decision is an explicit agenda item at Sync 4 |
 | **SYNC 4** — all numbers frozen, no further experiments | A+B | BLOCK | ⬜ | |
@@ -1335,14 +1335,14 @@ feature set represents, not in any one model's decision boundary. This nuance be
 cascade discussion, and should be re-verified once B's real CNN lands (a linear model and a tree model
 agreeing isn't as strong evidence as a linear model and a deep model agreeing).
 
-**🔴 IMPLICATION FOR STEP 3B — flagged for discussion, not yet acted on.** Step 3B's plan targets "light
+**✅ IMPLICATION FOR STEP 3B — discussed with the user, decision made:** Step 3B's plan targets "light
 exfiltration false negatives" via a threshold-lowering experiment. That diagnosis doesn't hold here: light
 recall is already 99.95%, there is essentially no light-class recall gap left to close, and lowering the
-threshold further would only add to an already-large FPR problem. The failure this data actually supports
-fixing is the mirror image — **reduce the 40% FPR** (e.g. *raising* the decision threshold, trading a
-little of the already-excellent recall for a large FPR improvement) — same rigor (one variable, one
-before/after table, report the honest cost), different target, justified directly by this step's
-diagnosis rather than the plan's original assumption.
+threshold further would only add to an already-large FPR problem. **Step 3B is pivoted to target FPR
+reduction instead** (raise the decision threshold, trade a little of the already-excellent recall for a
+large FPR improvement) — same rigor (one variable, one before/after table, report the honest cost),
+different target, justified directly by this step's diagnosis rather than the plan's original assumption.
+See Step 3B below for the updated design and results.
 
 Saved: `runs/metrics/error_analysis_xgboost_exf2021.json`, `runs/metrics/error_analysis_logreg_standin_exf2021.json`,
 `runs/metrics/cross_model_failure_overlap_exf2021.json`.
@@ -1351,38 +1351,102 @@ Saved: `runs/metrics/error_analysis_xgboost_exf2021.json`, `runs/metrics/error_a
 
 ### Step 3B — Iterative optimisation: the before/after experiment 🔴
 **Owner: A · Gate: PARALLEL · Est: 1.5 h · Files: `evaluation/error_analysis.py` (optimisation half)**
+**⚠️ PIVOTED from the original spec after Step 3A's real diagnosis — see below.**
 
 **What this means (plain English).**
 The brief requires that we don't just *diagnose* a failure — we fix one and prove the fix worked with
 numbers. Not prose. The structure is rigid on purpose: diagnose one specific failure in 8.1, change
 **exactly one thing**, re-run, put both numbers in one table.
 
-Our target is fixed: **light-exfiltration false negatives.** And we report the cost honestly — pushing
-recall up on a rare class always buys false positives somewhere else. Reporting that trade openly is
-worth more than a table that only shows the improvement.
+**Original target was light-exfiltration false negatives — Step 3A's real numbers ruled that out.**
+Light recall (99.95%) and heavy recall (99.94%) are statistically indistinguishable on Dataset A; there is
+no light-class recall gap left to close, and lowering the threshold further would only inflate an
+already-large FPR problem. **The actual diagnosed failure is FPR (46,846 false positives vs. 58 false
+negatives, ~40% FPR)** — the target is now the mirror image of the original spec: raise the threshold to
+cut false alarms, and report honestly what that costs in recall (the plan's own honesty requirement
+applies just as much in this direction — trading recall for FPR is exactly as reportable as the reverse).
 
 **What Claude should do.**
-1. **Diagnosis (from 3A):** light-class recall is materially below heavy-class recall.
-2. **Change exactly one variable.** Pick one, run it, do not stack them:
-   - **Option 1 (recommended):** lower the XGBoost decision threshold from 0.5 to the value maximising
-     F1 **on the light subclass only**, chosen on validation folds, never on test.
-   - **Option 2:** raise `scale_pos_weight`, or apply per-subclass sample weights upweighting light rows.
+1. **Diagnosis (from 3A, real):** FPR is the dominant failure mode, not light-class recall.
+2. **Change exactly one variable:** raise the XGBoost decision threshold from 0.5 to the value minimising
+   FPR subject to a recall floor (chosen on validation folds — via `out_of_fold_predictions()`'s already-
+   computed OOF probabilities — never re-tuned on a held-out test set), or simply sweep several
+   candidate thresholds and report the trade curve directly. This is a pure post-hoc threshold move — the
+   model is identical, so any metric change is attributable to the threshold and nothing else.
+3. **One table:**
 
-   Recommend Option 1: it is a pure post-hoc threshold move, so the model is identical and the
-   comparison is clean — any metric change is attributable to the threshold and nothing else. Option 2
-   retrains and confounds the comparison.
-3. **One table, two rows:**
-
-   | Configuration | Light recall | Heavy recall | Overall F1 | PR-AUC | **FPR** |
+   | Configuration | Light recall | Heavy recall | Overall recall | Overall F1 | **FPR** |
    |---|---|---|---|---|---|
    | Before (threshold 0.50) | | | | | |
    | After (threshold `t*`) | | | | | |
 
 4. **One paragraph of defence** stating: what we changed, why it targets the diagnosed failure, what it
-   improved, **what it cost in false positives**, and whether a real SOC would accept that trade. If
-   light recall improves by 8 points and FPR triples, say that and argue whether it's worth it. Do not
-   present the improvement alone.
+   improved (FPR), **what it cost in recall** (on both subclasses, since light was the analytically
+   interesting one even though it wasn't the recall problem), and whether a real SOC would accept that
+   trade. Do not present the improvement alone.
 5. Save to `runs/metrics/optimisation_before_after.json`.
+
+**✅ RESULTS (13 Aug 2026) — Dataset A complete, and the experiment surfaced a bigger finding than a
+routine trade-off table: XGBoost's positive-class probability output on this dataset is a near-step
+function, not a smooth distribution, which means the "obvious fix" (raise the threshold) essentially
+does not work.**
+
+`evaluation/error_analysis.py` extended: `threshold_sweep()` (recomputes predictions at each candidate
+threshold from the SAME out-of-fold probabilities computed in 3A — a pure post-hoc decision-rule change,
+zero retraining), `select_threshold_min_fpr_with_recall_floor()`, `plot_threshold_tradeoff()`,
+`before_after_table()`, `save_optimisation_result()`. 6/6 new unit tests (bringing `test_error_analysis.py`
+to 14/14 total, 3A+3B combined), all hand-computed (exact recall/FPR/precision at specific thresholds
+derived by hand from an 8-row fixture). Full suite 67/67 (5 skipped, Dataset-B-data-dependent).
+
+**A dense 0.01-step sweep from threshold 0.05 to 0.95 on Dataset A's real XGBoost OOF probabilities**
+(`runs/figures/exf2021_xgboost_threshold_tradeoff.png`, full curve in
+`runs/metrics/optimisation_before_after.json`) revealed the actual shape of the problem:
+
+| threshold | recall | FPR |
+|---|---|---|
+| 0.05 – 0.69 | ~0.999 → 0.993 (essentially flat) | ~0.406 → 0.402 (essentially flat) |
+| 0.70 | 0.980 | 0.397 |
+| **0.71** | **0.706** | **0.286** |
+| **0.72** | **0.029** | **0.012** |
+| 0.73 – 0.95 | ≈0 | ≈0 |
+
+**Across 65 threshold points (0.05–0.69) recall and FPR barely move at all — then the entire model
+collapses inside a 0.02-wide band (0.70→0.72).** This means XGBoost's scores for this feature set are
+saturated near a narrow band rather than smoothly spread across [0,1]: the vast majority of both true
+attacks *and* the ~46K misclassified benign rows carry near-identical predicted probabilities, so no
+threshold can cleanly separate "a little less recall" from "a lot less FPR" — you get almost the current
+behaviour, or you get almost nothing.
+
+**Before/after table**, using `select_threshold_min_fpr_with_recall_floor(sweep, recall_floor=0.95)` —
+the highest threshold minimising FPR while keeping overall recall ≥95% — which the sweep places at
+`t*=0.70`, right at the edge of the cliff:
+
+| Configuration | Light recall | Heavy recall | Overall recall | Overall F1 | **FPR** |
+|---|---|---|---|---|---|
+| Before (threshold 0.50) | 99.95% | 99.94% | 99.95% | 0.8182 | **40.48%** |
+| After (threshold 0.70) | 98.04% | 98.02% | 98.03% | 0.8116 | **39.72%** |
+
+**Defence paragraph:** we changed exactly one variable — the post-hoc decision threshold, same trained
+model, same probabilities, so any metric change is attributable to the threshold alone. Under a 95%
+recall floor, the best achievable trade costs ~2 points of recall (both subclasses drop together, since
+light and heavy were never actually different — 3A's finding) for a **0.76-point absolute FPR reduction
+(40.48%→39.72%, ~2% relative)** — not a good trade by any reasonable standard, and a real SOC would
+correctly reject it: losing detection on ~2,000 additional attack rows to remove essentially no false
+alarms is a bad deal. Pushing the threshold past the cliff (t=0.71) buys a real FPR cut (40%→28.6%) but
+at a catastrophic recall cost (99.9%→70.6%) that no exfiltration detector should accept. **The honest
+conclusion is negative, and that is itself the finding: threshold tuning cannot fix Dataset A's FPR
+problem, because the model's probability output doesn't have a usable gradient in the region that
+matters.** This is a stronger, more specific empirical argument for the Ch 8.4 cascade than a modest
+win would have been — the fix has to come from a genuinely different signal (Isolation Forest's density
+view, or the CNN's learned representation), not from recalibrating XGBoost's own decision boundary. Worth
+cross-referencing against 3A's finding that XGBoost and LogReg already agree on 99% of false positives:
+two different linear/tree decision boundaries over the *same* F1–F3 features produce the same false
+alarms, and now even sweeping XGBoost's own threshold across its full range can't shake them loose either
+— all three results triangulate on the same conclusion, that the FPR problem lives in the feature
+representation, not in any one model's decision rule.
+
+Saved: `runs/metrics/optimisation_before_after.json` (before/after table + full sweep),
+`runs/figures/exf2021_xgboost_threshold_tradeoff.png`.
 
 ---
 
