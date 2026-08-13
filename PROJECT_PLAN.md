@@ -190,7 +190,7 @@ Gate: **BLOCK** = gates the other person's work, gets priority · **PAR** = para
 | **SYNC 2** — both loaders pass `validate_schema()` on real data | A+B | BLOCK | ⬜ | |
 | **PHASE 2 — ANALYSIS & MODELS** | | | | |
 | 2A — `preprocessing/pipeline.py` | A | BLOCK | ✅ | Gates every model. Caught + fixed a real bug: `SimpleImputer` silently dropped all-NaN `B_ONLY` columns (11→7) without `keep_empty_features=True` — would have broken the CNN/AE's fixed input width |
-| **2A′ — `evaluation/metrics.py` shared harness + JSON schema** | A | **BLOCK** | ⬜ | **Also gates B** — 2E, 2F *and* 2G all import it. Do immediately after 2A, before 2B/2C |
+| **2A′ — `evaluation/metrics.py` shared harness + JSON schema** | A | **BLOCK** | ✅ | **B unblocked** — 2E, 2F, 2G can now import it. Verified end-to-end against real Dataset A: aggregate confusion matrix sums exactly to the true class counts (115,714/105,601), confirming CV aggregation is correct |
 | 2B — EDA + statistical evidence per feature → **Ch 3** | A | PAR | ⬜ | |
 | 2C — Feature ranking + **`SourceIP` leakage demo** → **Ch 4** | A | PAR | ⬜ | |
 | 2D — XGBoost + `max_depth` sweep | A | PAR | ⬜ | Harness moved to 2A′ — 2D is no longer on B's critical path |
@@ -776,7 +776,7 @@ sizing guard, and the full leakage-guard proof). 18/18 across the whole suite.
 
 ---
 
-### Step 2A′ — Shared evaluation harness 🔴 BLOCKING
+### Step 2A′ — Shared evaluation harness ✅ COMPLETE
 **Owner: A · Gate: BLOCKING (B cannot score anything until this lands) · Est: 0.75 h · Files: `evaluation/metrics.py`**
 
 **What this means (plain English).**
@@ -805,6 +805,22 @@ to sequence 2B / 2C / 2D in whatever order is convenient.
    would have caught the 93%-positive framing bug on its own.
 7. **Verification:** run on a synthetic frame with a known confusion matrix and assert every metric
    matches hand-computed values. Both teammates import it and confirm identical output before Sync 3.
+
+✅ **Done.** `tests/test_metrics.py` — 7/7 passing, including a hand-computed confusion matrix
+(precision/recall/F1/FPR all verified against manual counts) with `y_pred` and `y_proba` deliberately
+decoupled so PR-AUC/ROC-AUC could also be checked against an exact value (1.0, from a perfectly-ranked
+synthetic score) rather than only cross-checked against sklearn calling sklearn. Majority-baseline logic
+verified against a hand-derived 8/9 fraction.
+
+**Real-data smoke test against Dataset A** (LogisticRegression placeholder, not the real model —
+purely to exercise the harness): the `aggregate_confusion_matrix` summed across all 5 folds equals
+**exactly** the dataset's true class counts (68,813+46,901=115,714 benign; 366+105,235=105,601 attack),
+confirming the out-of-fold CV aggregation is correct on real data, not just in synthetic unit tests.
+`majority_baseline` correctly reports `f1=0.0` (benign is the 52%-majority class here, so "always predict
+benign" catches zero attacks) — exactly the number that would have caught D8's 93%-positive framing bug
+had this harness existed before that decision was made.
+
+25/25 across the whole test suite (18 prior + 7 new).
 
 ---
 
