@@ -206,7 +206,7 @@ Gate: **BLOCK** = gates the other person's work, gets priority · **PAR** = para
 | **SYNC 4** — all numbers frozen, no further experiments | A+B | BLOCK | ⬜ | |
 | **PHASE 4 — REPORT** | | | | |
 | 4A — Ch 1 threat characterisation + Ch 2 literature matrix | A | PAR | ✅ | Draft done: `report/drafts/ch01_threat_characterization.md`, `ch02_literature_review.md`. Caught+fixed a MITRE ID error (T1572 has no sub-techniques). |
-| 4B — Ch 3 EDA + Ch 4 feature ranking | A | PAR | ⬜ | |
+| 4B — Ch 3 EDA + Ch 4 feature ranking | A | PAR | ✅ | Draft done: `report/drafts/ch03_eda.md`, `ch04_feature_ranking.md`. Dataset B `SourceIP` demo + VIF flagged PENDING (data locality) |
 | 4C — Ch 5 harmonisation + Ch 6 model justification | B | PAR | ⬜ | Needs 4 papers, one per model |
 | 4D — Ch 7 pipeline + Appendices A & B | B | PAR | ⬜ | |
 | 4E — Ch 8.1–8.3 error analysis, variance, benchmarking | A | PAR | ⬜ | |
@@ -1668,6 +1668,31 @@ step's.
 
 From Steps 2B and 2C. Lead Ch 3.3 with the significance table and the **effect-size caveat about large
 n**. Lead Ch 4 with the leakage demonstration — it is the strongest single narrative beat in the report.
+
+**✅ RESULTS (14 Aug 2026) — draft written, Dataset A complete, Dataset B pieces explicitly flagged
+PENDING rather than filled in.**
+
+Drafts live at `report/drafts/ch03_eda.md` and `ch04_feature_ranking.md`. Both pull directly from Step
+2B/2C's real numbers (significance table, three-way breakdown, gain importance, VIF, the `sld` leakage
+finding) rather than re-deriving anything — Ch 3.3 leads with the significance table and the large-n
+p-value caveat exactly as instructed, and Ch 4 leads with the `sld` leakage demo's genuine surprise
+(importance dominates, score barely moves — traced to partial class overlap, not a `SourceIP`-style
+exclusive lookup).
+
+**Two things intentionally left incomplete rather than guessed at:**
+1. **Dataset B's `SourceIP` leakage demo and VIF table (Ch 4 §4.3/§4.4)** — not run on this machine
+   (`data/dohbrw2020/` empty here), and separate work from the Dataset B EDA numbers B already
+   backfilled for Ch 3. Marked **PENDING** at every point in the draft, with the expected shape of the
+   result stated explicitly as a prediction to be checked, not assumed. This is the one piece of Step 4B
+   that still needs B's side.
+2. Dataset B's full per-feature significance table and correlation heatmap (Ch 3 §3.3/§3.4) — only the
+   one-line summary B already reported in the tracker (4/11 large effect size, 6/11 medium, 4
+   multicollinearity pairs incl. `vol_primary`↔`struct_max_segment` r=0.94) is in the draft; the full
+   table/figure is pending B's local run, same data-locality reason.
+
+Both gaps are additive, not blocking — the chapters read complete on Dataset A alone and slot Dataset B's
+numbers in once they exist, per this project's "each teammate only has their own dataset locally"
+constraint (`data/` is gitignored).
 
 ---
 
