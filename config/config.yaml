@@ -63,6 +63,8 @@ models:
     learning_rate: 0.001
     batch_size: 256
     early_stopping_patience: 5
+    max_epochs: 100  # generous cap -- early stopping (patience 5 on val PR-AUC) is what actually stops training
+    val_frac: 0.2    # carved from the training fold ONLY for early stopping, never from the test fold
     random_state: 42
 
   autoencoder:
@@ -71,6 +73,8 @@ models:
     loss: mse
     optimizer: adam
     learning_rate: 0.001
+    batch_size: 256
+    max_epochs: 100
     threshold_percentile: 95  # of BENIGN TRAINING-FOLD reconstruction error only
     random_state: 42
 
