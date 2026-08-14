@@ -194,7 +194,7 @@ Gate: **BLOCK** = gates the other person's work, gets priority · **PAR** = para
 | 2B — EDA + statistical evidence per feature → **Ch 3** | A | PAR | ✅ | Dataset A done: 5/7 testable features show large Cliff's delta; 2 multicollinearity pairs flagged; **light vs. heavy surprise** — see writeup below. **Dataset B backfilled by B** (13 Aug, real hard-framing data, code unchanged from A's commit): all 11 columns testable (B observes every family), 4/11 large effect size, 6/11 medium, 4 multicollinearity pairs flagged incl. `vol_primary`↔`struct_max_segment` r=0.94 — see writeup below |
 | 2C — Feature ranking + **`SourceIP` leakage demo** → **Ch 4** | A | PAR | ✅ | Dataset A done: gain ranking + `sld` leakage demo produced a genuine surprise (importance dominates but score barely moves — traced to partial class overlap, not a methodology bug) + VIF (nearly all F1/F3 heavily collinear). `SourceIP` demo not run locally (Dataset B data locality, same as 2B/2D) |
 | 2D — XGBoost + `max_depth` sweep | A | PAR | ✅ | Dataset A done: F1=0.818 vs. majority-baseline F1=0.0; sweep flat across depth 3–12 (F1/FPR move <0.001) — see writeup below. **Dataset B backfilled by B** (13 Aug, real hard-framing data, code unchanged from A's commit): F1≈0.9999 flat across the entire depth sweep vs. majority-baseline F1=0.667 — near-perfect separation with all 5 leakage identifiers already dropped. **Flag for Ch 5/8: this complicates "hard framing = the real detection problem"** — packet-shape features alone appear almost trivially sufficient for DoH tunnel detection on this dataset, independent of the SourceIP leakage mechanism. Worth a paragraph, not silently filed away as a good number |
-| 2E — Isolation Forest + `contamination` sweep | B | PAR | ⬜ | |
+| 2E — Isolation Forest + `contamination` sweep | B | PAR | ✅ | Both datasets done. Outlier premise breaks on both B-hard (F1 0.341 < majority 0.667) and A (F1 0.105 < majority 0.646, worse, ROC-AUC below chance 0.261) — attack isn't a minority density on either. Backfilled A's half 14 Aug |
 | 2F — 1D-CNN + Autoencoder | B | PAR | ⬜ | |
 | 2G — Cross-dataset transfer + shift plots + **ablation** → **Ch 5** | B | PAR | ⬜ | Needs 2A′ harness + A's trained XGBoost (Sync 3). Uses `families=F1_only` and `intersection` |
 | **SYNC 3** — four models trained, both datasets, both framings | A+B | BLOCK | ⬜ | |
@@ -1150,7 +1150,7 @@ clean up behind it.
    not the one that maximises F1, and explain why: a first-stage filter that misses attacks is fatal,
    while one that over-flags is merely expensive.
 
-**✅ RESULTS (14 Aug 2026) — Dataset B (hard + easy) complete, Dataset A blocked.**
+**✅ RESULTS (14 Aug 2026) — Dataset A and Dataset B (hard + easy) all complete.**
 
 `models/unsupervised.py` built: `IsolationForestDetector` (sklearn adapter remapping `{-1,1}` →
 `{1,0}` and sign-flipping `decision_function` so higher = more likely attack, matching
@@ -1213,12 +1213,77 @@ loader), both framings:
   genuinely imbalanced) is closer to Isolation Forest's actual premise, and its F1 (0.3326) tracks its
   own majority-class-adjacent baseline (`always_positive_f1` 0.3526) far more closely than hard framing's
   does — consistent with the same explanation.
-- **Dataset A — not run locally.** Same blocker as Step 2D's original Dataset B gap, mirrored: this
-  machine has `data/dohbrw2020/` but not `data/exf2021/`. `models/unsupervised.py` needs zero changes to
-  run Dataset A — it's dataset-agnostic by construction — the remaining work is literally
-  `run_isolation_forest(*Exf2021Loader(config).load(), config, families="full")`, run on whichever machine
-  has `data/exf2021/` populated (mirrors the 6faeee7 backfill pattern used to close Step 2D's Dataset B
-  gap).
+**Dataset A** (backfilled 14 Aug 2026, on A's machine — `models/unsupervised.py` needed zero changes,
+confirming it really was dataset-agnostic as designed) — 221,315 rows, `families="full"`, positive_rate
+0.4772 (near-1:1, close to Dataset B hard framing's exact 0.5000; unlike B this is Dataset A's *natural*
+class balance, not an artificial framing choice — see D5/D8). `b_only_columns_all_nan: true`, consistent
+with every other model run on this dataset.
+
+- **Baseline** (`contamination=0.2`, locked config): F1 = **0.1050**, precision 0.1778, recall
+  **0.0745**, PR-AUC 0.4018, **ROC-AUC 0.2614**, FPR 0.3142 — vs. majority-baseline F1 = 0.0 (majority
+  class is benign) and `always_positive_f1` = **0.6460** (always guessing "attack" beats the trained
+  detector by a wide margin). Saved: `runs/metrics/isoforest_exf2021.json`.
+- **Sensitivity sweep**, `contamination ∈ {0.05, 0.10, 0.20, 0.30}`:
+
+  | contamination | F1 | FPR | recall |
+  |---|---|---|---|
+  | 0.05 | 0.0931 | 0.0430 | 0.0511 |
+  | 0.10 | 0.1201 | 0.1247 | 0.0726 |
+  | 0.20 | 0.1050 | 0.3142 | 0.0745 |
+  | 0.30 | 0.1459 | 0.4650 | 0.1188 |
+
+  All four points sit under the 0.5 FPR cascade budget, so `select_cascade_contamination` picks the
+  highest swept value (`contamination=0.30`, `met_fpr_tolerance=True`): recall 0.1188 / FPR 0.4650 /
+  F1 0.1459 — the same "sweep never located the actual bend" caveat B noted for Dataset B applies here
+  too. Saved: `runs/metrics/isoforest_exf2021_contamination_sweep.json`, figure
+  `runs/figures/isoforest_exf2021_contamination_sweep.png`.
+
+  **Interpretation — does the outlier-detection premise hold up better on Dataset A than it did on
+  Dataset B's hard framing? No — checked directly against B's numbers above, and it is measurably
+  worse, not better, on every axis:**
+
+  | | Dataset A (all, natural ~48/52) | Dataset B hard (balanced 50/50) |
+  |---|---|---|
+  | detector F1 | 0.1050 | 0.3411 |
+  | `always_positive_f1` | 0.6460 | 0.6667 |
+  | gap (baseline − detector) | **0.541** | 0.326 |
+  | best recall across the whole sweep | 0.1188 (at contamination 0.30) | 0.3307 (at contamination 0.30) |
+  | ROC-AUC | **0.2614** | 0.4611 |
+
+  Dataset A reproduces B's core structural diagnosis — "attack" is not a minority density here either
+  (positive_rate 0.4772 is essentially the same near-1:1 split as B's hard framing), so an unsupervised
+  outlier detector has no principled way to prefer one half of a roughly-bimodal, evenly-weighted
+  distribution as "the" anomalies, and guessing the majority-adjacent class beats it outright. But two
+  things make Dataset A's failure mode *more* severe, not comparably bad: recall never exceeds 0.119
+  anywhere in the sweep (Dataset A's high-throughput exfiltration should, if anything, be an easier
+  outlier-detection target than DoH tunnel traffic — it manifestly is not, on this feature set), and
+  **ROC-AUC of 0.2614 is below the 0.5 chance line**, which B's Dataset B results never showed (B's worst
+  ROC-AUC was 0.4611, still under chance but much closer to it). An AUC below 0.5 means the anomaly score
+  is not merely uninformative but *inversely* ranked relative to the true label on this dataset — flagging
+  benign rows as more anomalous than attack rows, on average.
+
+  **A hypothesis for the below-chance AUC, stated as a hypothesis and not re-verified against the raw
+  isolation depths here:** Chapters 3/4's own findings on Dataset A give a plausible mechanism — 5 of 7
+  testable features show a *large* Cliff's delta between benign and attack (Ch 3.3), and attack rows are
+  heavily collinear across F1/F3 (VIF ≫ 10 on 6 of 7 columns, Ch 4.4), consistent with attack traffic
+  forming a large, comparatively homogeneous cluster in feature space (every exfiltration session chunks
+  and encodes its payload through the same mechanics, Ch 1.2) while benign DNS traffic is the more
+  heterogeneous, heavier-tailed class. Isolation Forest's mechanism flags points that are *easy to
+  isolate* — i.e. sit in sparser regions of the space — as anomalous; if attack rows are actually the
+  denser, more homogeneous cluster and benign rows the sparser, more varied one, the detector would
+  systematically flag benign as anomalous, which is exactly the below-chance ranking observed. This is a
+  plausible explanation consistent with this project's own prior chapters, not an independently confirmed
+  one — a genuine follow-up (not undertaken here, out of scope for this backfill) would compare mean path
+  length/isolation depth per class directly rather than inferring it from an unrelated feature-importance
+  table.
+
+  **Bottom line for Ch 6/8:** Isolation Forest's structural mismatch with this project's data is not
+  confined to Dataset B's artificially-balanced hard framing — it reproduces, and worsens, on Dataset A's
+  naturally near-balanced class distribution. This strengthens (not weakens) B's original point that the
+  cascade's first stage needs pairing with a model that can actually use labels (Step 3C); it also means
+  Step 3C's cascade cannot lean on Isolation Forest for meaningful recall on Dataset A specifically — the
+  cascade design should account for this rather than assume Dataset A behaves like B's easy framing (the
+  one setting where Isolation Forest's own premise roughly held).
 
 ---
 
