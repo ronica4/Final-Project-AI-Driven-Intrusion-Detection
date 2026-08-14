@@ -205,7 +205,7 @@ Gate: **BLOCK** = gates the other person's work, gets priority · **PAR** = para
 | 3D — `ensemble/llm_arbiter.py` → **Bonus** | B | PAR | ⬜ **DEFERRED** | **Not started by default** (D7). Add-back decision is an explicit agenda item at Sync 4 |
 | **SYNC 4** — all numbers frozen, no further experiments | A+B | BLOCK | ⬜ | |
 | **PHASE 4 — REPORT** | | | | |
-| 4A — Ch 1 threat characterisation + Ch 2 literature matrix | A | PAR | ⬜ | Must open by distinguishing exfil from DGA |
+| 4A — Ch 1 threat characterisation + Ch 2 literature matrix | A | PAR | ✅ | Draft done: `report/drafts/ch01_threat_characterization.md`, `ch02_literature_review.md`. Caught+fixed a MITRE ID error (T1572 has no sub-techniques). |
 | 4B — Ch 3 EDA + Ch 4 feature ranking | A | PAR | ⬜ | |
 | 4C — Ch 5 harmonisation + Ch 6 model justification | B | PAR | ⬜ | Needs 4 papers, one per model |
 | 4D — Ch 7 pipeline + Appendices A & B | B | PAR | ⬜ | |
@@ -1549,7 +1549,9 @@ prose, push exploratory plots to appendices.
 proposal previously, so address it in the first paragraph: DGA is a *rendezvous* problem (does this
 domain look machine-generated?) under TA0011; exfiltration is a *carrier capacity* problem (is data
 being smuggled inside query names?) under **TA0010**. Different tactic, mechanism, feature space, and
-failure mode. Then: the MITRE table (T1048.003 primary, T1572.002, T1071.004, T1132.001); the attack
+failure mode. Then: the MITRE table (T1048.003 primary, T1572, T1071.004, T1132.001 — **verified against
+the live ATT&CK matrix 14 Aug 2026: T1572 "Protocol Tunneling" currently has no sub-techniques, so cite
+it bare, not as T1572.002 as an earlier draft of this plan had it**); the attack
 mechanics (base64URL encode → chunk to the 63-byte label / 253-byte FQDN limits → emit as subdomains →
 resolver forwards to attacker NS, no inbound connection); the throughput/stealth tradeoff that produces
 the light class; the **Telemetry & Feature Mapping table in exactly the 5-column format the brief
@@ -1561,6 +1563,33 @@ them on the three axes: the semantic meaning each assigns to **entropy**; whethe
 **per-query or per-session**; and which features we **adopted, modified, or rejected** — with reasons.
 Nadler's low-throughput focus is the direct ancestor of our light-class analysis; make that lineage
 explicit, it strengthens both chapters.
+
+**✅ RESULTS (14 Aug 2026) — draft written, both chapters.**
+
+Drafts live at `report/drafts/ch01_threat_characterization.md` and `ch02_literature_review.md` (markdown,
+for B to fold into `report/Final_Report.docx` at assembly — Step 4H). Content pulled directly from this
+project's own locked artifacts rather than re-deriving from scratch: the MITRE table, attack mechanics,
+and §1.3 rationale draw on `schema/unified.py`'s `FAMILY_SECURITY_MEANING`/`COLUMN_SOURCE` dicts; the
+throughput/stealth section cross-references Step 3A's real recall numbers.
+
+**One factual correction caught before it reached the report:** this plan's Ch 1 instructions cited
+`T1572.002`. Verified against the live MITRE ATT&CK Enterprise matrix — **T1572 "Protocol Tunneling" has
+no sub-techniques**, so the correct citation is the bare `T1572`. `T1048.003`, `T1071.004`, and
+`T1132.001` were all verified correct as written. Fixed in both this plan and the Ch 1 draft.
+
+**Ch 2's literature matrix** contrasts Nadler et al. (2019) — window-level/per-session anomaly detection,
+entropy as a distributional-shift signal — against Mahdavifar et al. (2021) — per-query supervised
+classification, entropy as a direct per-record feature, and the actual source of the CIC-Bell-DNS-EXF-2021
+dataset this project uses as Dataset A. Adopted/modified/rejected table included with reasons (F2 entropy
+adopted from both independently converging on it; Nadler's per-client windowing rejected for Dataset A
+since it ships with no session key to window over; the same signal resurfaces as Dataset B's B_ONLY F4
+temporal-rhythm family instead). Closes by stating explicitly that Step 3A's real finding — light and
+heavy recall statistically indistinguishable, bottleneck is FPR not a light-class blind spot — **diverges**
+from the light-class-blind-spot hypothesis the Nadler lineage predicts, and reports that divergence
+plainly rather than reframing it to match the literature.
+
+**Not yet done:** the Ch 6.2 "four papers, one per model" benchmark table is B's Step 4C scope, not this
+step's.
 
 ---
 
