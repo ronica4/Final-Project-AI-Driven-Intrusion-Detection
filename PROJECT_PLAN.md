@@ -209,7 +209,7 @@ Gate: **BLOCK** = gates the other person's work, gets priority · **PAR** = para
 | 4B — Ch 3 EDA + Ch 4 feature ranking | A | PAR | ✅ | Draft done: `report/drafts/ch03_eda.md`, `ch04_feature_ranking.md`. Dataset B `SourceIP` demo + VIF flagged PENDING (data locality) |
 | 4C — Ch 5 harmonisation + Ch 6 model justification | B | PAR | ⬜ | Needs 4 papers, one per model |
 | 4D — Ch 7 pipeline + Appendices A & B | B | PAR | ⬜ | |
-| 4E — Ch 8.1–8.3 error analysis, variance, benchmarking | A | PAR | ⬜ | |
+| 4E — Ch 8.1–8.3 error analysis, variance, benchmarking | A | PAR | 🟡 | §8.2b (base-rate honesty) done, self-contained, see `report/drafts/ch08_2b_base_rate_honesty.md`. §8.1/8.2/8.3 blocked on Sync 3 + B's Ch 6.2 table |
 | 4F — Ch 8.4 cascade + Bonus chapter | B | PAR | ⬜ | |
 | 4G — Executive Summary | A | PAR | ⬜ | Written last, max 1 page |
 | 4H — **Final assembly**, formatting, captions, 15-page cut | **B** | BLOCK | ⬜ | Single owner — a doc stitched by two people reads like it |
@@ -1814,6 +1814,29 @@ closes on, and it connects directly to the cascade's purpose in Ch 8.4.
 attribute discrepancies to normalisation, feature set, framing, or hyperparameters. **Our hard-framing
 number will likely look worse than published results; that is because published results often use the
 easy framing.** Say that. It is the strongest possible use of the D4 dual-framing work.
+
+**✅ RESULTS (14 Aug 2026) — §8.2b only, done and self-contained. §8.1/§8.2/§8.3 remain blocked.**
+
+`report/drafts/ch08_2b_base_rate_honesty.md` — written and arithmetic double-checked by script, not by
+hand, since it's going into a graded report. Uses Dataset A's real measured XGBoost numbers (Steps
+2D/3B) at an illustrative production scale (10M queries/day, 1:10,000 real-world base rate, both labelled
+explicitly as illustrative rather than measured): **before threshold optimisation (t=0.50), ~4.05M false
+alerts/day against ~1,000 real attacks caught (1 real alert in ~4,050); after (t=0.70), ~3.97M false
+alerts/day (1 in ~4,052) — essentially unchanged**, which is the same "threshold-raising barely moved
+FPR" finding Step 3B already reported, now shown to also barely move the production-scale picture. Our
+measured FPR (40.48%) is ~40x the plan's own illustrative "acceptable" 1% FPR baseline (which itself
+would still be ~100,000 false alerts/day against the same 1,000 attacks).
+
+**One phrasing in this plan's own 8.2b instructions above was imprecise and is corrected in the draft
+rather than repeated verbatim:** "100,000 false alerts a day per true positive" conflates two different
+numbers — at a 1% FPR and 1:10,000 base rate, it's **100,000 false alerts total per day**, against
+**~1,000 true positives per day**, i.e. ~100 false alerts *per* true positive, not 100,000. The draft
+states both numbers separately and correctly.
+
+**Still needed before this section is final:** Dataset B's equivalent FPR (hard framing) to add a
+second column — the tracker only has B's F1≈0.9999 for that run, not the underlying FPR needed to redo
+this extrapolation for Dataset B. Everything else in §8.1/§8.2/§8.3 stays blocked on Sync 3 (all four
+models) and Step 4C's Ch 6.2 benchmark table respectively.
 
 ---
 
