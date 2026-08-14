@@ -131,27 +131,38 @@ def sensitivity_sweep(
     return sweep
 
 
-def plot_sensitivity(sweep: list[dict[str, Any]], dataset_label: str, path: str | Path) -> None:
-    """F1 and FPR on twin y-axes against max_depth -- one consistent figure
-    style, reused by Step 2E's contamination sweep."""
-    depths = [r["max_depth"] for r in sweep]
+def plot_sensitivity(
+    sweep: list[dict[str, Any]],
+    dataset_label: str,
+    path: str | Path,
+    param_key: str = "max_depth",
+    param_label: str = "max_depth",
+    model_label: str = "XGBoost",
+) -> None:
+    """F1 and FPR on twin y-axes against a swept hyperparameter -- one
+    consistent figure style shared across every sweep in the project.
+    Defaults reproduce Step 2D's max_depth sweep exactly; Step 2E's
+    contamination sweep (models/unsupervised.py) calls this with
+    param_key="contamination", param_label="contamination",
+    model_label="Isolation Forest" rather than duplicating the plotting code."""
+    xs = [r[param_key] for r in sweep]
     f1s = [r["f1"] for r in sweep]
     fprs = [r["fpr"] for r in sweep]
 
     fig, ax1 = plt.subplots(figsize=(6, 4))
-    ax1.plot(depths, f1s, marker="o", color="tab:blue", label="F1")
-    ax1.set_xlabel("max_depth")
+    ax1.plot(xs, f1s, marker="o", color="tab:blue", label="F1")
+    ax1.set_xlabel(param_label)
     ax1.set_ylabel("F1", color="tab:blue")
     ax1.tick_params(axis="y", labelcolor="tab:blue")
     ax1.set_ylim(0, 1.05)
 
     ax2 = ax1.twinx()
-    ax2.plot(depths, fprs, marker="s", color="tab:red", label="FPR")
+    ax2.plot(xs, fprs, marker="s", color="tab:red", label="FPR")
     ax2.set_ylabel("FPR", color="tab:red")
     ax2.tick_params(axis="y", labelcolor="tab:red")
     ax2.set_ylim(0, max(0.5, max(fprs) * 1.2))
 
-    ax1.set_title(f"XGBoost max_depth sensitivity -- {dataset_label}")
+    ax1.set_title(f"{model_label} {param_label} sensitivity -- {dataset_label}")
     fig.tight_layout()
 
     path = Path(path)

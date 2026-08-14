@@ -1150,6 +1150,76 @@ clean up behind it.
    not the one that maximises F1, and explain why: a first-stage filter that misses attacks is fatal,
    while one that over-flags is merely expensive.
 
+**✅ RESULTS (14 Aug 2026) — Dataset B (hard + easy) complete, Dataset A blocked.**
+
+`models/unsupervised.py` built: `IsolationForestDetector` (sklearn adapter remapping `{-1,1}` →
+`{1,0}` and sign-flipping `decision_function` so higher = more likely attack, matching
+`evaluation.metrics`'s convention), `build_isolation_forest()` (every hyperparameter read from
+`config.yaml`, `contamination` overridable for the sweep), `run_isolation_forest()` (**`use_smote=False`**
+throughout — resampling an unsupervised density estimator to a synthetic 1:1 balance would teach it the
+attack class is part of the normal density, defeating the model's premise before it fits a single tree;
+unlike XGBoost, Isolation Forest has no reweighting knob to use instead, so the honest answer here is no
+resampling at all), `sensitivity_sweep()`, `select_cascade_contamination()` (picks the contamination that
+maximises **recall** among candidates within `max_tolerable_fpr`, not the one maximising F1 — see the
+docstring rationale, same first-stage-cascade argument as the plan text above), and `plot_sensitivity()`
+(thin wrapper reusing `models.supervised.plot_sensitivity`'s twin-axis figure rather than duplicating
+plotting code). 11/11 unit tests passing (`tests/test_unsupervised.py`), including a structural check that
+the built pipeline has no `smote` step and hand-verified remap/sign-flip tests against a stub forest. Full
+suite 77 passed / 6 skipped (skips are the real-data `exf2021` tests — expected, Dataset A isn't
+downloaded on this machine).
+
+Ran against real Dataset B (`families="full"`, `SourceIP`/other identifiers already dropped by the
+loader), both framings:
+
+- **Hard framing** — 39,614 rows, positive_rate 0.5000 (balanced). **Baseline** (`contamination=0.2`,
+  locked config): F1 = **0.3411**, precision 0.5951, recall 0.2391, PR-AUC 0.5190, ROC-AUC 0.4611,
+  FPR 0.1627 — vs. majority-baseline F1 = **0.6667** (always predicting the majority/attack class beats
+  the detector outright on this framing). Saved: `runs/metrics/isoforest_dohbrw2020_hard.json`.
+- **Easy framing** — 291,784 rows, positive_rate 0.2141. **Baseline**: F1 = **0.3326**, precision 0.3441,
+  recall 0.3218, PR-AUC 0.2507, ROC-AUC 0.5572, FPR 0.1671 — vs. majority-baseline F1 = 0.0 (majority
+  class here is benign; `always_positive_f1` = 0.3526, just above the detector's own F1). Saved:
+  `runs/metrics/isoforest_dohbrw2020_easy.json`.
+- **Sensitivity sweep**, `contamination ∈ {0.05, 0.10, 0.20, 0.30}`:
+
+  | contamination | hard F1 | hard FPR | hard recall | easy F1 | easy FPR | easy recall |
+  |---|---|---|---|---|---|---|
+  | 0.05 | 0.1107 | 0.0387 | 0.0609 | 0.0582 | 0.0537 | 0.0359 |
+  | 0.10 | 0.2283 | 0.0627 | 0.1370 | 0.1792 | 0.0916 | 0.1315 |
+  | 0.20 | 0.3411 | 0.1627 | 0.2391 | 0.3326 | 0.1671 | 0.3218 |
+  | 0.30 | 0.4137 | 0.2681 | 0.3307 | 0.3430 | 0.2697 | 0.4120 |
+
+  Recall and FPR both rise monotonically with contamination on both framings, as expected — flagging more
+  rows as outliers necessarily catches more attacks at the cost of more false alarms. All four points sit
+  under the 0.5 FPR cascade budget on both framings, so `select_cascade_contamination` picks the
+  **highest** swept value (`contamination=0.30`) on both, with `met_fpr_tolerance=True`: hard framing
+  lands at recall 0.3307 / FPR 0.2681 / F1 0.4137, easy framing at recall 0.4120 / FPR 0.2697 / F1 0.3430.
+  Since the whole sweep stayed inside budget, this result doesn't yet locate where the recall/FPR tradeoff
+  actually bends — a useful follow-up would extend the grid past 0.30 to find the point where FPR crosses
+  0.5, rather than reporting "0.30 is best" as if it were an interior optimum. Saved:
+  `runs/metrics/isoforest_dohbrw2020_{hard,easy}_contamination_sweep.json` (+ full per-contamination
+  `evaluate()` results), figures `runs/figures/isoforest_dohbrw2020_{hard,easy}_contamination_sweep.png`.
+
+  **Interpretation (Ch 6 material):** on hard framing specifically, the density-based premise underlying
+  Isolation Forest breaks down in a way XGBoost's supervised objective doesn't share. Hard framing is
+  constructed as a 50/50 split of DoH vs. non-DoH traffic, so "attack" is not a minority anomaly relative
+  to a normal baseline — it is literally half the density the model fits its trees against. An unsupervised
+  outlier detector has no mechanism to prefer one half of a bimodal, evenly-weighted distribution as "the"
+  outliers, which is exactly why majority-baseline (F1 0.6667) beats the trained detector (F1 0.3411) here:
+  guessing the majority class is a stronger strategy than trying to find outliers in a distribution that
+  isn't actually imbalanced. This is a structural mismatch between the model family and the hard-framing
+  task, not a hyperparameter problem — worth stating plainly in Ch 6/8 as a reason Isolation Forest's
+  cascade role (Step 3C) has to be paired with a model that can use labels, rather than treating "low
+  recall" here as something a bigger contamination sweep would fix. Easy framing (positive_rate 0.2141,
+  genuinely imbalanced) is closer to Isolation Forest's actual premise, and its F1 (0.3326) tracks its
+  own majority-class-adjacent baseline (`always_positive_f1` 0.3526) far more closely than hard framing's
+  does — consistent with the same explanation.
+- **Dataset A — not run locally.** Same blocker as Step 2D's original Dataset B gap, mirrored: this
+  machine has `data/dohbrw2020/` but not `data/exf2021/`. `models/unsupervised.py` needs zero changes to
+  run Dataset A — it's dataset-agnostic by construction — the remaining work is literally
+  `run_isolation_forest(*Exf2021Loader(config).load(), config, families="full")`, run on whichever machine
+  has `data/exf2021/` populated (mirrors the 6faeee7 backfill pattern used to close Step 2D's Dataset B
+  gap).
+
 ---
 
 ### Step 2F — 1D-CNN and Autoencoder
