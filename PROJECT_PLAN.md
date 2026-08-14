@@ -209,7 +209,7 @@ Gate: **BLOCK** = gates the other person's work, gets priority · **PAR** = para
 | 4B — Ch 3 EDA + Ch 4 feature ranking | A | PAR | ✅ | Draft done: `report/drafts/ch03_eda.md`, `ch04_feature_ranking.md`. Dataset B `SourceIP` demo + VIF flagged PENDING (data locality) |
 | 4C — Ch 5 harmonisation + Ch 6 model justification | B | PAR | ⬜ | Needs 4 papers, one per model |
 | 4D — Ch 7 pipeline + Appendices A & B | B | PAR | ⬜ | |
-| 4E — Ch 8.1–8.3 error analysis, variance, benchmarking | A | PAR | 🟡 | §8.2b (base-rate honesty) done, self-contained, see `report/drafts/ch08_2b_base_rate_honesty.md`. §8.1/8.2/8.3 blocked on Sync 3 + B's Ch 6.2 table |
+| 4E — Ch 8.1–8.3 error analysis, variance, benchmarking | A | PAR | 🟡 | §8.1 (partial, XGBoost+IsoForest) and §8.2b done — see `report/drafts/ch08_1_error_forensics.md`, `ch08_2b_base_rate_honesty.md`. CNN/AE rows PENDING; §8.2/8.3 blocked on Sync 3 + B's Ch 6.2 table |
 | 4F — Ch 8.4 cascade + Bonus chapter | B | PAR | ⬜ | |
 | 4G — Executive Summary | A | PAR | ⬜ | Written last, max 1 page |
 | 4H — **Final assembly**, formatting, captions, 15-page cut | **B** | BLOCK | ⬜ | Single owner — a doc stitched by two people reads like it |
@@ -1815,7 +1815,30 @@ attribute discrepancies to normalisation, feature set, framing, or hyperparamete
 number will likely look worse than published results; that is because published results often use the
 easy framing.** Say that. It is the strongest possible use of the D4 dual-framing work.
 
-**✅ RESULTS (14 Aug 2026) — §8.2b only, done and self-contained. §8.1/§8.2/§8.3 remain blocked.**
+**✅ RESULTS (14 Aug 2026) — §8.1 (partial) and §8.2b done. §8.2/§8.3 remain blocked.**
+
+`report/drafts/ch08_1_error_forensics.md` — confusion matrices, per-subclass recall, FN/FP forensics,
+cross-model comparison, and the Step 3B before/after table, for the two models with real Dataset A
+results (XGBoost, Isolation Forest) plus Dataset B summary metrics from B's backfills. CNN/Autoencoder
+rows explicitly marked PENDING throughout rather than filled in.
+
+**New this pass, not just an assembly of existing numbers:** extended `evaluation/error_analysis.py`'s
+Step 3A forensics to Isolation Forest — the harness needed zero changes (`out_of_fold_predictions()`
+already falls back to `decision_function()` when `predict_proba` isn't available, which is exactly
+Isolation Forest's case). Real result, not previously in the plan: **heavy/light recall parity holds a
+third independent way** (7.57% vs. 7.26%, same "no gap" pattern XGBoost and LogReg already showed) —
+three different methods now agree Dataset A has no light-class blind spot on these features. More
+interesting: **cross-model failure overlap between XGBoost and Isolation Forest, computed against a
+chance baseline** (not just a raw overlap fraction, which is uninformative on its own — same reasoning as
+Chapter 3's large-n p-value caveat): both false-negative and false-positive overlap are substantially
+*lower* than independence would predict (2.4x and 4.2x respectively), meaning the two models' errors are
+genuinely complementary, more so than the XGBoost/LogReg pair from Step 3A. The catch: Isolation Forest's
+absolute recall (7.45%) is too low for this to translate into a usable ensemble vote — it sharpens,
+rather than changes, Step 2E's/Step 3C's existing plan to use it only as a first-stage filter. One
+concrete narrative detail: `microsoft` shows up in **both** models' top false positives despite the low
+aggregate FP overlap, and `sld="192"` shows up in XGBoost's top false positives (Step 3A) *and*
+Isolation Forest's top false negatives (this pass) — the same ambiguous domain implicated on both sides
+of two different models' errors.
 
 `report/drafts/ch08_2b_base_rate_honesty.md` — written and arithmetic double-checked by script, not by
 hand, since it's going into a graded report. Uses Dataset A's real measured XGBoost numbers (Steps
