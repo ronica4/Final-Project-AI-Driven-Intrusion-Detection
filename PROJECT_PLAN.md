@@ -213,8 +213,8 @@ Gate: **BLOCK** = gates the other person's work, gets priority · **PAR** = para
 | 4H — **Final assembly**, formatting, captions, 15-page cut | **B** | BLOCK | ✅ | `report/Final_Report.docx` at **15 body pages / 3 appendix pages** (budget: ≤15/≤5). Every number/table/finding preserved verbatim — cuts were prose compression, moving 4 large tables to a new Appendix D, dropping the unrequired TOC (its populated field was ~2 hidden pages), and tightened formatting. Only remaining item: **A's end-to-end read + comments**. See "Status for A" note below |
 | **PHASE 5 — SUBMISSION** | | | | |
 | 5A — AI use disclosure | A+B | BLOCK | ✅ | **Revised 15 Aug**, per the professor: raw log exports not required. `ai_use.md` written and pushed instead; both raw log files removed |
-| 5B — Clean-checkout verification + ZIP assembly | A+B | BLOCK | ⬜ | |
-| **SYNC 5** — ZIP verified on both machines | A+B | BLOCK | ⬜ | |
+| 5B — Clean-checkout verification + ZIP assembly | A+B | BLOCK | ✅ | Done by A (15 Aug). Secret scan clean (no `hf_` token value anywhere in history; `.env` never added at any commit). No `data/` or `runs/` tracked. Full suite 115 passed. ZIP `Group_211430046_211897574_Final_Project.zip` assembled from `git archive HEAD` (tracked files only, so no venv/pycache/data can leak in), 60 files, 180 KB. **Two real README bugs caught and fixed** — see note below |
+| **SYNC 5** — ZIP verified on both machines | A+B | BLOCK | 🟡 | **Verified on A's machine only.** A unzipped to a clean directory and confirmed contents; B's independent unzip did not happen before submission — A submitted directly, accepting that gap knowingly rather than waiting. Recorded as partial, not ticked |
 
 ---
 
@@ -2144,6 +2144,47 @@ prompts/questions) instead.
    - `report/Final_Report.docx`
    - `ai_use.md`
 5. **Both teammates unzip it on their own machine and confirm the contents.**
+
+**Completed 15 Aug 2026 by A.** ZIP built via `git archive HEAD` into a staging directory with
+`PROJECT_PLAN.md` removed — building from `git archive` rather than copying the working tree is what
+guarantees `data/`, `runs/`, `venv/`, and `__pycache__` cannot leak in, since untracked files simply
+do not exist in the archive. Verified by extracting to a clean directory: 60 files, all four required
+items present, all six forbidden paths absent.
+
+**Step 5B did its job — it caught two genuine bugs that would have shipped:**
+
+1. **`README.md` depended on `PROJECT_PLAN.md`**, which is deliberately not in the ZIP. It deferred to
+   the plan for dataset download (Step 0B), project structure, and CLI details — so a grader following
+   the README literally had *no way to obtain the datasets*. This is precisely the "requires unwritten
+   knowledge" failure this step exists to find. Fixed by inlining the UNB landing pages, the exact
+   expected directory layout for both datasets, the full CLI surface with defaults, the test command,
+   and a project-structure map.
+2. **The documented `exf2021` directory layout was wrong.** The loader expects five sibling directories
+   each with a nested subfolder (`heavy_attacks/Attacks/`, `light_attacks/Attacks/`,
+   `heavy_benign/Benign/`, `light_benign/Benign/`, `top_level_benign/Benign/`), verified against
+   `ingestion/exf2021.py` and against the real on-disk layout. Also: `--families` was missing its third
+   value `F1_only`, and the README told the reader to create a `.env` with an `HF_TOKEN` that nothing in
+   the submitted code path actually needs (the LLM arbiter, Step 3D, was deferred per D7).
+
+3. **`requirements.txt` was unusable — the most serious find.** It pinned `numpy==2.5.2`, a version that
+   does not exist on PyPI, so `pip install -r requirements.txt` aborted immediately on a clean machine:
+   the project could not be installed *or run at all* by anyone but us. The file did not match the
+   working environment on any major pin — it claimed `pandas==3.0.5` (actual 2.2.3),
+   `scikit-learn==1.9.0` (actual 1.8.0), `torch==2.13.0+cpu` (actual 2.10.0), `pytest==9.1.1`
+   (actual 8.4.2) — i.e. it was never generated from the environment that passes our 115 tests.
+   Rewritten as an explicit list of the 11 real direct dependencies, pinned to the versions actually
+   in use, with transitive deps left to pip. Also dropped `python-dotenv` and `python-docx`, neither of
+   which is imported anywhere in the submitted code. Verified with `pip install --dry-run` in a fresh
+   venv: resolves fully, and `torch` correctly lands on `2.10.0+cpu` from the CPU index.
+
+This is the entire justification for Step 5B existing as a blocking gate. Every one of these three bugs
+is invisible from a working developer machine and fatal on a grader's.
+
+**One honest gap:** the submitted `README.md` and `requirements.txt` were fixed and the dependency
+resolution re-verified in a fresh venv, but the full clone → install → `pytest` loop was not re-run
+end-to-end after the fix (time constraint on submission day), and B never independently unzipped the
+final artifact (see SYNC 5). The 115-test suite passes on A's machine against these exact pinned
+versions, so the residual risk is low but not zero.
 
 ### 🔄 SYNC 5 — pre-submission
 - [ ] ZIP verified independently by both teammates
