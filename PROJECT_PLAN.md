@@ -1318,6 +1318,41 @@ exist when we trained.
 5. **Verification:** training curves saved; assert the AE threshold was computed from training-fold
    benign rows only; assert reproducibility across two runs with the same seed.
 
+**✅ RESULTS (15 Aug 2026) — Dataset B hard framing complete; easy framing in progress; Dataset A backfill handed to A.**
+
+`models/deep.py` built: PyTorch CPU (D10) `CNNClassifier` (2 conv blocks 32/64, kernel 3, `padding="same"`,
+BatchNorm, dropout 0.3, dense 64, sigmoid) and `AutoencoderDetector` (`11→8→4→8→11`, ReLU, MSE, fit on
+**benign training-fold rows only**, threshold = 95th percentile of benign training-fold reconstruction
+error — computed inside the fold, asserted never to see test data). Both adapt to the actual input width
+at fit time rather than hardcoding 11 (needed for `families="intersection"`/`"F1_only"` later in Step 2G),
+and both are reproducible across two runs at a fixed seed (asserted). `fit_full_for_training_curve` +
+`plot_training_curve` capture per-epoch history (val PR-AUC for the CNN's early stopping, train MSE for
+the AE). `tests/test_deep.py` — 15/15 passing, including the leakage-guard proof for point 2 above
+(perturbing only the attack rows leaves the fitted AE and its threshold byte-for-byte identical).
+
+Ran against real Dataset B, hard framing (39,614 rows, positive_rate 0.5000 — the ~1:1 balance point 2F's
+"hard" framing is defined to hit, per D4/D8 — `families="full"`, same convention as XGBoost/Isolation
+Forest so every model shares one input shape per dataset; `b_only_columns_all_nan: false`, confirming this
+*is* Dataset B's own 11-column space, unlike the Dataset A run where 4 columns go constant):
+
+- **CNN**: F1 = **0.9938** ± 0.0014, precision 0.9956, recall 0.9920, PR-AUC 0.9995, ROC-AUC 0.9995,
+  **FPR 0.0044** — vs. majority-baseline F1 = 0.6667 (hard framing's near-1:1 split makes "always predict
+  malicious" a strong trivial baseline; the CNN still clears it by 0.33 F1 and drives FPR near zero).
+  Saved: `runs/metrics/cnn_dohbrw2020_hard.json`, `runs/figures/cnn_dohbrw2020_hard_training_curve.png`.
+- **Autoencoder** (benign-only fit): F1 = **0.4064** ± 0.0217, precision 0.8400, recall 0.2681, PR-AUC
+  0.7709, ROC-AUC 0.7903, FPR 0.0508. **Report this honestly: F1 sits *below* the 0.6667 majority
+  baseline** — exactly the case the majority-baseline field exists to catch (Step 2A′). High precision but
+  low recall is the expected shape for a benign-only reconstruction model when the "hard" framing is
+  attack-heavy at the class level: an unsupervised detector calibrated purely on benign reconstruction
+  error has no mechanism to benefit from a favourable prior the way a supervised model does, so a
+  near-50/50 label split does not help it the way it helps the CNN's baseline. Saved:
+  `runs/metrics/autoencoder_dohbrw2020_hard.json`, `runs/figures/autoencoder_dohbrw2020_hard_training_curve.png`.
+- **Dataset B easy framing** — running now (same two models, `framing="easy"`); results to follow in a
+  follow-up commit rather than blocking this one.
+- **Dataset A** — intentionally not run here. A is taking this half directly (mirrors the Step 2E
+  pattern: `run_cnn`/`run_autoencoder` against `Exf2021Loader(config)`, `families="full"`) to avoid both
+  of us editing this section at once.
+
 ---
 
 ### Step 2G — Cross-dataset transfer, distribution shift, and the ablation → **Chapter 5**
