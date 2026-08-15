@@ -1645,6 +1645,54 @@ in the hundreds rather than the hundreds of thousands.
    quietly reporting only the favourable metric.
 5. Produce the block diagram for Ch 8.4.
 
+**✅ RESULTS (15 Aug 2026) — Dataset B hard framing, real data. Honest negative result: the cascade does NOT beat standalone XGBoost, and the reason is diagnosable, not a bug.**
+
+`ensemble/cascade.py` built: `run_cascade()` fits all three stage models once on an 80/20
+stratified split (`test_frac=0.2`, `random_state` from `config.cv`), reuses
+`models.unsupervised.select_cascade_contamination` (Step 2E.3's own cascade-threshold rule,
+`max_tolerable_fpr=0.5`) to pick Stage 1's contamination rather than hand-picking one, and
+instruments rows-in/out/discarded and wall-clock latency at every stage.
+`individual_model_metrics_on_same_split()` scores each of the three fitted stage models on the
+*identical* held-out rows the cascade was scored on, so the comparison below is not confounded
+by a different split. 6/6 tests passing on synthetic data (`tests/test_cascade.py`).
+
+Run against real Dataset B, hard framing (39,614 rows, positive_rate 0.5000, `families="full"`,
+7,923-row held-out test split):
+
+- **Stage 1 selection**: sweep + `select_cascade_contamination(max_tolerable_fpr=0.5)` chose
+  **contamination=0.3** — recall 0.331, FPR 0.268, `met_fpr_tolerance=True`.
+- **Funnel**: 7,923 rows in → Stage 1 discards 5,510 (69.5%), 2,413 survive → Stage 2 resolves
+  1,732 confidently, **681 escalate** (28.2% of survivors) — **all 681 via XGBoost/Autoencoder
+  disagreement, zero via the probability band** (`escalated_in_band=0`). Escalation count is
+  within the plan's "a few hundred, not tens of thousands" target, though above the 200-call
+  budget config reserves for Step 3D — moot since 3D is deferred (module docstring: escalated
+  rows fall back to XGBoost's own verdict, so this doesn't change any metric below).
+- **Cascade end-to-end**: F1 = **0.5053**, precision 1.0, recall 0.3380, PR-AUC 0.6690,
+  ROC-AUC 0.5793, FPR 0.0 — vs. majority-baseline F1 = 0.6667. **The cascade sits below its own
+  majority baseline.**
+- **Individual models, same test split**: Isolation Forest F1 0.4201 (recall 0.3380, FPR
+  0.2711), **XGBoost F1 0.9999** (precision 1.0, recall 0.9997 — matches Step 2D's known
+  near-perfect standalone result), Autoencoder F1 0.3816 (recall 0.2492). XGBoost alone beats
+  the cascade by 0.49 F1.
+
+  **Diagnosis, reported honestly rather than gold-plated away:** the cascade's recall is
+  bottlenecked at exactly Stage 1's recall (0.338 cascade vs. 0.338 standalone Isolation
+  Forest) — any attack row Stage 1 discards is gone forever, no downstream stage ever sees it.
+  The cascade's entire premise (Step 3C spec point 1) is a *cheap, high-recall* first-stage
+  filter; on this near-1:1 "hard" framing, `select_cascade_contamination`'s own recall-first
+  selection rule still tops out at 33% recall within a 50%-FPR budget, because Isolation Forest
+  itself is a weak detector on this dataset/framing (consistent with Step 2E's own findings).
+  The premise simply does not hold here — it is not a tuning mistake to fix by picking a
+  different contamination (the sweep's best-available point was used), and not a bug to patch,
+  so it is reported as a limitation of the cascade design under this specific framing rather
+  than silently swapping in a rosier number. The *latency* premise fares no better: Stage 1
+  predicts at ~27.7 μs/row vs. Stage 2 XGBoost's ~5.7 μs/row on survivors — Isolation Forest is
+  not even cheaper than the model it is supposed to be shielding, so there is no compensating
+  throughput win to offset the lost recall either. Saved: `runs/metrics/cascade_dohbrw2020_hard.json`,
+  `runs/figures/cascade_funnel_dohbrw2020_hard.png` (block diagram, Ch 8.4).
+- **Dataset A** — not run (single-dataset step, Dataset B only per plan; Person A owns Dataset A
+  locally).
+
 ---
 
 ### Step 3D — LLM arbiter → **Bonus Chapter** 🟨 DEFERRED BY DEFAULT
