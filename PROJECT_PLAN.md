@@ -210,7 +210,7 @@ Gate: **BLOCK** = gates the other person's work, gets priority · **PAR** = para
 | 4E — Ch 8.1–8.3 error analysis, variance, benchmarking | A | PAR | ✅ | All of §8.1–8.3 done — see `ch08_1_error_forensics.md` (now all 4 models, real CNN/AE replacing the LogReg stand-in), `ch08_2_cross_dataset_verdict.md`, `ch08_2b_base_rate_honesty.md`, `ch08_3_benchmark_comparison.md` |
 | 4F — Ch 8.4 cascade + Bonus chapter | B | PAR | ✅ | Draft done: `ch08_4_cascade.md`. Bonus chapter n/a — 3D deferred |
 | 4G — Executive Summary | A | PAR | ✅ | `ch00_executive_summary.md`, pushed `ceb9484` |
-| 4H — **Final assembly**, formatting, captions, 15-page cut | **B** | BLOCK | 🟡 | Single owner. All 14 chapters merged into `report/Final_Report.docx`; 3 rounds of prose compression + a new Appendix D (supporting tables moved out of the body) + tightened docx formatting brought body pages 37→19 (target ≤15) with every number/table/finding preserved. Still ~4 pages over — B continues cutting. See "Status for A" note below |
+| 4H — **Final assembly**, formatting, captions, 15-page cut | **B** | BLOCK | ✅ | `report/Final_Report.docx` at **15 body pages / 3 appendix pages** (budget: ≤15/≤5). Every number/table/finding preserved verbatim — cuts were prose compression, moving 4 large tables to a new Appendix D, dropping the unrequired TOC (its populated field was ~2 hidden pages), and tightened formatting. Only remaining item: **A's end-to-end read + comments**. See "Status for A" note below |
 | **PHASE 5 — SUBMISSION** | | | | |
 | 5A — AI use disclosure | A+B | BLOCK | ✅ | **Revised 15 Aug**, per the professor: raw log exports not required. `ai_use.md` written and pushed instead; both raw log files removed |
 | 5B — Clean-checkout verification + ZIP assembly | A+B | BLOCK | ⬜ | |
@@ -2087,39 +2087,31 @@ the merged result but does not edit the file directly.
 
 ---
 
-### 📋 Status for A (Guy) — 15 Aug, mid-day
+### 📋 Status for A (Guy) — 15 Aug, updated
 
-**Where things stand.** All 14 chapter drafts + `report/Final_Report.docx` are merged and pushed
-(latest: `e43488e`). Every number, table, and named finding from Phase 2–4 is preserved verbatim —
-nothing was cut for content, only prose tightened and a few large supporting tables (Cliff's delta full
-table, VIF full table, KS shift full table, cross-model chance-baseline table) moved into a new
-**Appendix D** (`report/drafts/appendix_supporting_tables.md`), each with a one-line pointer + the key
-numbers restated inline in the original chapter.
+**Report assembly is done.** `report/Final_Report.docx` is at **15 body pages / 3 appendix pages**
+(budget: ≤15 body / ≤5 appendix), pushed at `6a14f99`. Every number, table, and named finding from
+Phase 2–4 is preserved verbatim — nothing was cut for content. What changed to hit budget: heavy prose
+compression across all 14 chapters, 4 large supporting tables moved to a new **Appendix D**
+(`report/drafts/appendix_supporting_tables.md` — Cliff's delta, VIF, KS shift, cross-model chance-baseline
+tables, each with a pointer + key numbers still inline in the original chapter), ch7's hyperparameter
+table moved into its existing Appendix C, the unrequired Table of Contents dropped (its populated field
+was silently costing ~2 pages), and margins tightened to 0.65"/0.6".
 
-Page count trajectory this pass: 37 → 27 → 25 → 23 → 20 → **19 body pages** (target: ≤15 body + ≤5
-appendix; appendix currently at 3/5, so there's headroom there). B is continuing to cut the remaining ~4
-pages via further prose compression on the longest chapters (8.1, 5, 4) — no action needed from A on this
-specifically, just flagging it's still in progress, not stalled.
+**What A needs to do now — the last Step 4H checklist item:**
+1. **Pull `6a14f99`**, read `report/Final_Report.docx` end-to-end, send comments (commit/PR note or edit
+   to this file — no other channel exists). Check cross-references while you're in there: Ch 8.3 citing
+   the Ch 6.2 benchmark table, and ch03/ch04/ch05/ch08.1's "Appendix D.x" pointers matching the appendix
+   content.
+2. Once you're satisfied, move to **Step 5B**: clone to a fresh directory, new venv,
+   `pip install -r requirements.txt`, follow `README.md` literally, flag anything needing unwritten
+   knowledge. Run `git log -p | grep -i "hf_"` (must be empty) and confirm `.env` was never committed, on
+   your own clone.
+3. Confirm **SYNC 4** (numbers frozen) — functionally true already, just tick the box.
+4. Assemble/verify the ZIP together (`Group_211430046_211897574_Final_Project.zip`) and close out
+   **SYNC 5**.
 
-**What A can do right now, in parallel, without waiting for B to hit 15 pages:**
-1. **Pull `e43488e`** and skim `report/Final_Report.docx` end-to-end (Step 4H's last checklist item) —
-   page numbers will still shift, but content, terminology, and cross-references (e.g. Ch 8.3 citing the
-   Ch 6.2 benchmark table, ch03/ch04/ch05/ch08.1's new "Appendix D.x" pointers matching the appendix
-   content) can be reviewed now. Send comments via a commit/PR note or edit to this file — no other
-   channel exists.
-2. **Start Step 5B prep** on your machine: clone to a fresh directory, new venv,
-   `pip install -r requirements.txt`, follow `README.md` literally. Flag anything that needs unwritten
-   knowledge — that's a README bug. This doesn't depend on the report being at final page count.
-3. **Run the `git log -p | grep -i "hf_"` check** (must be empty) and confirm `.env` was never committed,
-   on your own clone, independently of B.
-4. Decide/confirm **SYNC 4** ("all numbers frozen, no further experiments") — functionally true already
-   (every chapter is on real data, no placeholders remain), just needs the checklist box ticked once both
-   of you agree nothing else changes.
-
-**What's still blocked on B:** final page count ≤15 body pages, then the last Step 4H checklist item (A's
-end-to-end read + comments) can close out for real, followed by Step 5B ZIP assembly
-(`Group_211430046_211897574_Final_Project.zip`) and SYNC 5. B will push again as soon as the budget is
-met — watch for the next commit rather than pulling on a timer.
+Nothing is blocked on B anymore — the ball is in A's court for the review pass.
 
 ---
 
