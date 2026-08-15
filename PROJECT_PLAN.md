@@ -163,9 +163,7 @@ dns_exfil_project/
 ├── report/
 │   └── Final_Report.docx        # 15 pages max, 1.5 spacing, Calibri 11/12
 │
-└── ai_logs/                     # ⬅ REQUIRED DELIVERABLE — full, unedited
-    ├── claude_code_teammate_A.json
-    └── claude_code_teammate_B.json
+└── ai_use.md                    # ⬅ REQUIRED DELIVERABLE — AI use disclosure (raw logs not required, per prof, 15 Aug)
 ```
 
 ---
@@ -214,7 +212,7 @@ Gate: **BLOCK** = gates the other person's work, gets priority · **PAR** = para
 | 4G — Executive Summary | A | PAR | ✅ | `ch00_executive_summary.md`, pushed `ceb9484` |
 | 4H — **Final assembly**, formatting, captions, 15-page cut | **B** | BLOCK | ⬜ | Single owner — a doc stitched by two people reads like it |
 | **PHASE 5 — SUBMISSION** | | | | |
-| 5A — AI log export, both teammates | A+B | BLOCK | 🟡 | **B done** (15 Aug): `ai_logs/claude_code_teammate_B.json`, full/unedited, scanned for `HF_TOKEN` (none pasted). A's export still pending. Full and unedited — curated = treated as missing |
+| 5A — AI use disclosure | A+B | BLOCK | ✅ | **Revised 15 Aug**, per the professor: raw log exports not required. `ai_use.md` written and pushed instead; both raw log files removed |
 | 5B — Clean-checkout verification + ZIP assembly | A+B | BLOCK | ⬜ | |
 | **SYNC 5** — ZIP verified on both machines | A+B | BLOCK | ⬜ | |
 
@@ -2091,20 +2089,18 @@ the merged result but does not edit the file directly.
 
 ## PHASE 5 — SUBMISSION
 
-### Step 5A — AI conversation logs ⚠ MANUAL, REQUIRED
-**Owner: A+B · Gate: BLOCKING · Est: 0.5 h each**
+### Step 5A — AI use disclosure ⚠ REQUIRED
+**Owner: A+B · Gate: BLOCKING**
 
-The brief is explicit: **full and unedited. Truncated, summarised, or curated logs are treated as
-missing**, and AI fingerprints without logs are penalised as undisclosed use.
+**Revised 15 Aug 2026, per direct confirmation from the professor: raw conversation-log exports are
+not required.** The original plan below (full, unedited per-teammate session exports) reflected an
+earlier, stricter reading of the brief; both raw log files (including B's already-exported
+`ai_logs/claude_code_teammate_B.json`) have been removed accordingly. Disclosure requirement is now
+satisfied by `ai_use.md` at the repo root (tools used, working process, and a per-phase summary of
+prompts/questions) instead.
 
-- [ ] **A** exports their complete session history → `ai_logs/claude_code_teammate_A.json`
-- [ ] **B** exports their complete session history → `ai_logs/claude_code_teammate_B.json`
-- [ ] Multiple sessions concatenated in chronological order with clear separators
-- [ ] Coverage spans planning, debugging, error analysis, and report writing
-- [ ] One additional file per any other tool used (ChatGPT, Gemini, …)
-- [ ] **Scan the logs for a pasted `HF_TOKEN` before zipping.** Logs are submitted verbatim; if a token
-      was ever pasted into a conversation it is now in the deliverable. If found, **rotate the token**
-      rather than editing the log — editing it violates the unedited requirement.
+- [x] `ai_use.md` written and pushed, covering both teammates' use of Claude Code
+- [x] Raw log exports removed as no longer required (B's file deleted; A's export skipped)
 
 ### Step 5B — Clean-checkout verification and ZIP
 **Owner: A+B · Gate: BLOCKING · Est: 1.0 h**
@@ -2115,15 +2111,15 @@ missing**, and AI fingerprints without logs are penalised as undisclosed use.
 2. `git log -p | grep -i "hf_"` → must be empty. Confirm `.env` was never committed at any point in
    history, not merely absent now.
 3. Confirm `data/` and `runs/` are excluded and the ZIP is a sane size.
-4. Assemble `Group_X1_X2_Final_Project.zip` (**both student IDs**, per D6) containing:
+4. Assemble `Group_211430046_211897574_Final_Project.zip` (**both student IDs**, per D6) containing:
    - the code repository (`main.py`, `requirements.txt`, `README.md`, all modules)
    - `report/Final_Report.docx`
-   - `ai_logs/` with **both** teammates' files
+   - `ai_use.md`
 5. **Both teammates unzip it on their own machine and confirm the contents.**
 
 ### 🔄 SYNC 5 — pre-submission
 - [ ] ZIP verified independently by both teammates
-- [ ] Both AI log files present and full-length
+- [ ] `ai_use.md` present in the ZIP
 - [ ] README verified against a genuinely clean checkout
 - [ ] No token in code, history, or logs
 - [ ] Submitted **before** Saturday 15 August
