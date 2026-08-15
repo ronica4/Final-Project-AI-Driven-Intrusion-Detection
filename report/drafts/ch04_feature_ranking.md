@@ -2,12 +2,12 @@
 
 This is the strongest single narrative beat in the report: we deliberately cheat, catch ourselves,
 and report the honest number — twice, once per dataset, via two structurally different leakage
-mechanisms. **Dataset A's half (the `sld` demo) is complete and produced a genuine, unplanned finding.
-Dataset B's half (the `SourceIP` demo) has not been run yet** — `data/dohbrw2020/` is not populated on
-this machine, and it is a separate piece of work from the Dataset B EDA numbers Teammate B already
-backfilled for Chapter 3. It is flagged **PENDING** at every point below rather than filled in with an
-assumed or predicted number, consistent with this project's standing rule never to report a result that
-hasn't actually been run.
+mechanisms. **Both halves are now complete.** Dataset A's half (the `sld` demo, §4.2) was run first and
+produced a genuine, unplanned finding — importance dominance without a real score gap, traced to `sld`'s
+partial class overlap. Dataset B's half (the `SourceIP` demo, §4.3), run once Dataset B's raw CSVs
+arrived locally (15 Aug 2026), shows the same qualitative surprise in a sharper form — see §4.3 for why
+`SourceIP`'s different, genuinely-exclusive leakage mechanism still produces the same practical
+conclusion as `sld`'s partial-overlap one.
 
 ## 4.1 Figure 4.1 — Gain-based feature importance
 
@@ -83,25 +83,39 @@ generalisable behavioural signal — but it is demonstrably a structurally weake
 `SourceIP`-style exclusive identifier, and the difference is now quantified rather than assumed by
 analogy.
 
-## 4.3 Leakage demonstration #2 — Dataset B, `SourceIP` — **PENDING**
+## 4.3 Leakage demonstration #2 — Dataset B, `SourceIP`
 
-**Not yet run.** Per the plan (Chapter 4 spec / Step 2C item 3), the expected shape of this demo is:
+**Status (15 Aug 2026): run for real by Teammate A**, once Dataset B's raw CSVs arrived locally (see
+Chapter 5's provenance note). Single-column demo, `SourceIP` only — the other 4 dropped identifiers
+(`DestinationIP`, `SourcePort`, `DestinationPort`, `TimeStamp`) are loaded alongside it via
+`include_leakage_columns=True` but excluded from both the dirty and clean frames here, mirroring §4.2's
+single-column `sld` demo rather than testing all 5 at once. Real data, Dataset B hard framing (39,614
+rows), `features/selection.py`'s `factorize_leakage_column()` / `gain_importance()`, same XGBoost
+hyperparameters as every other run in this report:
 
-1. Train with `include_leakage_columns=True` (`SourceIP` retained) — expect F1/PR-AUC ≈ 0.99+, since the
-   attacker in Dataset B's testbed reportedly used a single fixed IP throughout, making `SourceIP` a
-   near-exact lookup table for the label.
-2. Plot gain-based importance — expect `SourceIP` to dominate the ranking outright.
-3. Re-run with the 5 identifier columns dropped (the production loader default) — report the honest
-   F1/PR-AUC.
-4. Two-row before/after table, same format as §4.2's table above, plus one paragraph naming it as a
-   testbed artifact.
+**`SourceIP` has only 21 distinct values in the raw data** — confirming the testbed-artifact hypothesis
+directly: `192.168.20.111` alone accounts for 10,982 of 39,614 rows (27.7%), the top 5 IPs together
+account for over half the dataset. This is a lab-network identifier space, not a real-world one.
 
-Whether it actually plays out this cleanly — a `SourceIP`-style *exclusive* lookup, unlike `sld`'s
-*partial-overlap* one — is an empirical question, not something to assume in advance; §4.2 is the
-cautionary example of why. **This section will be filled in once Teammate B runs the demo** (the code
-path, `features/selection.py`'s `factorize_leakage_column()` / `gain_importance()` /
-`plot_feature_importance()`, is dataset-agnostic and already built — this is a data-locality gap, not a
-missing-code gap).
+| variant | F1 | PR-AUC | top-3 gain importance |
+|---|---|---|---|
+| with `_leakage_sourceip` (factorized) | 0.9998 | 1.0000 | `_leakage_sourceip` 0.3818, `struct_segments` 0.1321, `time_dispersion` 0.1053 |
+| clean (production loader default) | **0.9999** | 1.0000 | `struct_segments` 0.3057, `time_dispersion` 0.1923, `time_central` 0.1304 |
+
+**The same genuine surprise as §4.2's `sld` demo, in a sharper form: the leakage column dominates gain
+importance (0.3818, by far the single largest feature) yet the clean model is not merely
+close — it is marginally *better* (F1 0.9999 vs. 0.9998).** Unlike `sld` on Dataset A (where a real,
+if small, F1 gap existed and was traced to `sld`'s *partial* class overlap — 22 of 33 attack values also
+appearing in benign traffic), `SourceIP` on Dataset B hard framing has essentially **no room to move the
+needle at all**: Step 2D already established this framing is near-perfectly separable on packet-shape
+features alone (clean F1≈0.9999, majority baseline F1=0.6667), so there is no residual error for even an
+exclusive lookup-table feature to recover. The mechanism is different from `sld`'s partial-overlap
+story — `SourceIP` genuinely could act as a near-exact lookup here, unlike `sld` — but the *practical*
+conclusion is the same one §4.2 already drew: **high gain importance is a measure of "how much the
+model's splits routed through this column," not "how much this column's removal would cost."** On a
+saturated classification problem, both a genuinely leaky feature and a legitimate one can look
+identical on a before/after F1 comparison, which is exactly why this report checks both, on both
+datasets, rather than trusting importance alone. Saved: `runs/metrics/leakage_demo_dohbrw2020.json`.
 
 ## 4.4 Multicollinearity — Variance Inflation Factor
 

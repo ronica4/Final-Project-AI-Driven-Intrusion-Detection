@@ -192,7 +192,7 @@ Gate: **BLOCK** = gates the other person's work, gets priority · **PAR** = para
 | 2A — `preprocessing/pipeline.py` | A | BLOCK | ✅ | Gates every model. Caught + fixed a real bug: `SimpleImputer` silently dropped all-NaN `B_ONLY` columns (11→7) without `keep_empty_features=True` — would have broken the CNN/AE's fixed input width |
 | **2A′ — `evaluation/metrics.py` shared harness + JSON schema** | A | **BLOCK** | ✅ | **B unblocked** — 2E, 2F, 2G can now import it. Verified end-to-end against real Dataset A: aggregate confusion matrix sums exactly to the true class counts (115,714/105,601), confirming CV aggregation is correct |
 | 2B — EDA + statistical evidence per feature → **Ch 3** | A | PAR | ✅ | Dataset A done: 5/7 testable features show large Cliff's delta; 2 multicollinearity pairs flagged; **light vs. heavy surprise** — see writeup below. **Dataset B backfilled by B** (13 Aug, real hard-framing data, code unchanged from A's commit): all 11 columns testable (B observes every family), 4/11 large effect size, 6/11 medium, 4 multicollinearity pairs flagged incl. `vol_primary`↔`struct_max_segment` r=0.94 — see writeup below |
-| 2C — Feature ranking + **`SourceIP` leakage demo** → **Ch 4** | A | PAR | ✅ | Dataset A done: gain ranking + `sld` leakage demo produced a genuine surprise (importance dominates but score barely moves — traced to partial class overlap, not a methodology bug) + VIF (nearly all F1/F3 heavily collinear). `SourceIP` demo not run locally (Dataset B data locality, same as 2B/2D) |
+| 2C — Feature ranking + **`SourceIP` leakage demo** → **Ch 4** | A | PAR | ✅ | Dataset A done: gain ranking + `sld` leakage demo produced a genuine surprise (importance dominates but score barely moves — traced to partial class overlap, not a methodology bug) + VIF (nearly all F1/F3 heavily collinear). **`SourceIP` demo now done too** (15 Aug, once Dataset B CSVs arrived): 21 distinct source IPs (testbed artifact confirmed), leakage column dominates importance (0.3818) yet clean model is marginally *better* (F1 0.9999 vs. 0.9998) — same practical conclusion as `sld`, sharper because Dataset B hard framing is already near-saturated (F1≈0.9999) so there's no residual error left for even an exclusive lookup feature to recover. See `ch04_feature_ranking.md` §4.3 |
 | 2D — XGBoost + `max_depth` sweep | A | PAR | ✅ | Dataset A done: F1=0.818 vs. majority-baseline F1=0.0; sweep flat across depth 3–12 (F1/FPR move <0.001) — see writeup below. **Dataset B backfilled by B** (13 Aug, real hard-framing data, code unchanged from A's commit): F1≈0.9999 flat across the entire depth sweep vs. majority-baseline F1=0.667 — near-perfect separation with all 5 leakage identifiers already dropped. **Flag for Ch 5/8: this complicates "hard framing = the real detection problem"** — packet-shape features alone appear almost trivially sufficient for DoH tunnel detection on this dataset, independent of the SourceIP leakage mechanism. Worth a paragraph, not silently filed away as a good number |
 | 2E — Isolation Forest + `contamination` sweep | B | PAR | ✅ | Both datasets done. Outlier premise breaks on both B-hard (F1 0.341 < majority 0.667) and A (F1 0.105 < majority 0.646, worse, ROC-AUC below chance 0.261) — attack isn't a minority density on either. Backfilled A's half 14 Aug |
 | 2F — 1D-CNN + Autoencoder | B | PAR | 🟡 | Dataset B hard done (CNN F1=0.9938, AE F1=0.4064 below majority — honest negative); Dataset B easy in progress. **Dataset A backfilled by A** (15 Aug): CNN F1=0.8177 (matches XGBoost's ceiling almost exactly — same FPR wall, different architecture); AE F1=0.0434, ROC-AUC=0.2643 below chance — second unsupervised model (after Isolation Forest) to invert on Dataset A. See writeup below |
@@ -209,7 +209,7 @@ Gate: **BLOCK** = gates the other person's work, gets priority · **PAR** = para
 | 4B — Ch 3 EDA + Ch 4 feature ranking | A | PAR | ✅ | Draft done: `report/drafts/ch03_eda.md`, `ch04_feature_ranking.md`. Dataset B `SourceIP` demo + VIF flagged PENDING (data locality) |
 | 4C — Ch 5 harmonisation + Ch 6 model justification | B | PAR | 🟡 | Draft done: `ch05_harmonisation.md`, `ch06_models.md`. §5.2 (transfer matrix numbers) was pending B's write, now backfilled by A with real 4-model results — needs a final pass to fold those numbers into the prose |
 | 4D — Ch 7 pipeline + Appendices A & B | B | PAR | ✅ | Draft done: `ch07_pipeline.md` |
-| 4E — Ch 8.1–8.3 error analysis, variance, benchmarking | A | PAR | 🟡 | §8.1 (partial, XGBoost+IsoForest) and §8.2b done — see `report/drafts/ch08_1_error_forensics.md`, `ch08_2b_base_rate_honesty.md`. CNN/AE rows PENDING; §8.2/8.3 blocked on Sync 3 + B's Ch 6.2 table |
+| 4E — Ch 8.1–8.3 error analysis, variance, benchmarking | A | PAR | ✅ | All of §8.1–8.3 done — see `ch08_1_error_forensics.md` (now all 4 models, real CNN/AE replacing the LogReg stand-in), `ch08_2_cross_dataset_verdict.md`, `ch08_2b_base_rate_honesty.md`, `ch08_3_benchmark_comparison.md` |
 | 4F — Ch 8.4 cascade + Bonus chapter | B | PAR | ✅ | Draft done: `ch08_4_cascade.md`. Bonus chapter n/a — 3D deferred |
 | 4G — Executive Summary | A | PAR | ⬜ | Written last, max 1 page |
 | 4H — **Final assembly**, formatting, captions, 15-page cut | **B** | BLOCK | ⬜ | Single owner — a doc stitched by two people reads like it |
@@ -1455,7 +1455,7 @@ else) — before running against real data.
 
 - [ ] All four models trained on: Dataset A ✅, Dataset B hard ✅, Dataset B easy — CNN/AE still running on B's machine as of 15 Aug (XGBoost/Isolation Forest easy-framing status not yet confirmed either — check with B)
 - [x] Every result in `runs/metrics/` using the agreed JSON schema
-- [ ] Leakage demo complete with before/after numbers — Dataset A `sld` demo ✅; Dataset B `SourceIP` demo still not run (flagged PENDING since Ch4, `ch04_feature_ranking.md` §4.3)
+- [x] Leakage demo complete with before/after numbers — Dataset A `sld` demo ✅; Dataset B `SourceIP` demo ✅ (15 Aug, `ch04_feature_ranking.md` §4.3)
 - [x] Both sensitivity sweeps plotted (XGBoost `max_depth`, Isolation Forest `contamination`) — both datasets
 - [x] Transfer matrix and ablation complete — real data, all 4 models (15 Aug)
 - [x] **A ran `main.py` end to end on both datasets on this machine** (15 Aug, `--mode eda` for `exf2021` and `dohbrw2020`, both clean). **B's exf2021 run is still the Step 1C stub** (verified to fail at the correct point — no Dataset A locally) — not fully satisfiable as originally scoped since B never downloaded Dataset A's raw files; A's clean run on both datasets plus B's clean run on Dataset B is the closest this item gets to "both teammates, both datasets" given that constraint. Worth a one-line acknowledgment in the report if the rubric expects literal symmetry here, rather than silently claiming it happened
@@ -1991,8 +1991,48 @@ states both numbers separately and correctly.
 
 **Still needed before this section is final:** Dataset B's equivalent FPR (hard framing) to add a
 second column — the tracker only has B's F1≈0.9999 for that run, not the underlying FPR needed to redo
-this extrapolation for Dataset B. Everything else in §8.1/§8.2/§8.3 stays blocked on Sync 3 (all four
-models) and Step 4C's Ch 6.2 benchmark table respectively.
+this extrapolation for Dataset B.
+
+**✅ RESULTS (15 Aug 2026) — §8.2 and §8.3 now done too, once Step 2G and B's Ch 6.2 table landed.**
+
+`report/drafts/ch08_2_cross_dataset_verdict.md` — the rubric's required explicit call: **distribution
+shift, not overfitting**, backed by direct evidence rather than inference — in-domain CV performance
+stays strong for every model (ruling out "never learned a real signal"), the KS distribution-shift
+numbers were measured on the raw data independent of any model, and the failure mode itself (uniform
+collapse to a *fixed* all-positive-or-all-negative decision, not graceful degradation) is exactly
+distribution shift's signature rather than overfitting's. The CNN's B→A cell (F1=0.0000 but
+ROC-AUC=0.773) is the single clearest piece of evidence: the model's ranking survived transfer, only its
+threshold didn't, which overfitting could not produce.
+
+`report/drafts/ch08_3_benchmark_comparison.md` — real numbers against all 4 of B's Ch 6.2 papers. Genuine
+surprise: **the plan's predicted explanation ("our hard framing looks worse because published work uses
+the easier framing") turned out to explain none of the four gaps.** XGBoost vs. Abrahim et al. (2026):
+our standalone Dataset B hard-framing XGBoost (F1=0.9999) actually *meets or exceeds* their full stacking
+ensemble (F1=0.9981) — flagged with the standalone-vs-ensemble caveat rather than claimed as beating
+state of the art. CNN vs. Li et al. (2024): our recall is far higher (99.80% vs. 83.21%) but F1 lower
+(81.77% vs. 88.43%) — traced to a real structural cause, their hybrid Transformer+CNN has sequence-level
+access this project's stateless schema (D1) deliberately excludes, not a tuning gap. Isolation Forest vs.
+Wang et al. (2022): the starkest gap (our F1 0.1050/0.3411 vs. their unverified 98.1% accuracy claim),
+attributed to Step 2E's already-independently-diagnosed finding that attack isn't a minority density on
+either of this project's datasets — a dataset-structure cause, not a general indictment of the
+architecture. Autoencoder vs. De Bernardi et al. (2025): no real comparison possible, benchmark paper's
+numbers are entirely unverified — stated plainly rather than filled with an assumed number.
+
+**§8.1 now complete too (15 Aug 2026):** extended `evaluation/error_analysis.py`'s OOF forensics to CNN
+and Autoencoder on Dataset A, replacing the LogReg stand-in with real numbers (harness needed zero further
+changes — now confirmed model-agnostic against all four architectures, not just the two it was first
+built against). CNN essentially matches XGBoost (F1=0.8177 vs. 0.8182, same ~40% FPR wall); Autoencoder is
+worse than Isolation Forest on every axis except FPR (recall 2.34%, near-constant-negative). Chance-
+baseline overlap now spans all 6 model pairs (12 rows): supervised-vs-supervised (XGBoost/CNN) overlaps
+massively above chance in both FN (407×) and FP (2.47×) — they fail together; every supervised-vs-
+unsupervised pairing overlaps *below* chance, often sharply (Isolation Forest vs. CNN false negatives:
+11.6× lower) — genuinely different failure sources; the two unsupervised models' FNs sit right at the
+chance baseline (1.02×) despite a dramatic-looking 99.99% raw overlap fraction — the sharpest illustration
+in the report of why the chance correction matters, since the raw number alone would suggest a much
+stronger relationship than the corrected one supports. FN/FP forensics found a new CNN-specific pattern
+(NetBIOS-encoded legitimate hostnames driving part of its FPR) and confirmed numeric-shaped `sld` values
+read as unremarkable to *both* unsupervised architectures (Isolation Forest's top FNs are all `sld="192"`,
+the Autoencoder's are all `sld="224"` — same shape, different exact value).
 
 ---
 
