@@ -1,228 +1,277 @@
-# Chapter 7 — Pipeline Architecture
+# Chapter 7 — Pipeline, Imbalance Strategy, and Hyperparameters
 
 ## 7.1 Block diagram and the abstraction proof
 
 ```
-  raw dataset files (data/exf2021/ | data/dohbrw2020/)
-        │
-        ▼
-  ingestion/{exf2021,dohbrw2020}.py  ── the ONLY modules allowed to know a dataset name
-        │  .load() → (X, y, meta)
-        ▼
-  schema/unified.py  ── project() + validate_schema(): 11-column unified schema, 5 families
-        │
-        ▼
-  preprocessing/pipeline.py  ── build_pipeline(): impute → scale → (SMOTE) → estimator, ONE fittable unit
-        │
-        ├──► models/supervised.py    (XGBoost)
-        ├──► models/deep.py          (1D-CNN, Autoencoder)
-        ├──► models/unsupervised.py  (Isolation Forest)
-        ├──► ensemble/cascade.py     (Step 3C, single-dataset)
-        └──► evaluation/cross_dataset.py (Step 2G, cross-dataset only)
-        │
-        ▼
-  evaluation/metrics.py  ── evaluate(): shared scoring contract, majority baseline, all models alike
+ CLI (--dataset, --framing, --mode, --families)
+        |
+        v
+ registry.get(dataset_name)(config, framing=...)   <- the ONLY place a dataset name is named
+        |
+        v
+ loader.load() -> (X, y, meta)                      <- ingestion/exf2021.py | ingestion/dohbrw2020.py
+        |
+        v
+ schema.validate_schema(X, mode=families)           <- hard assert: 11 unified columns, correct dtypes
+        |
+        v
+ =========== EVERYTHING BELOW THIS LINE IS DATASET-BLIND ===========
+        |
+        v
+ preprocessing.build_pipeline(estimator, use_smote) <- impute -> scale -> [SMOTE] -> estimator, one
+        |                                                imblearn.pipeline.Pipeline, refit per CV fold
+        v
+ models/{supervised,unsupervised,deep}.py           <- XGBoost | Isolation Forest | 1D-CNN | Autoencoder
+        |
+        v
+ evaluation.metrics.evaluate()                      <- one scoring function, every model, both datasets
+        |
+        v
+ ensemble/cascade.py (Step 3C, single-dataset deployment path: IsoForest -> XGBoost -> escalation)
 ```
 
-This is the **Dataset Dependency Rule** (`PROJECT_PLAN.md`, Step 0D) made structural rather than aspirational:
-past `load_dataset()` returning `(X, y, meta)` in `main.py`, no downstream module — preprocessing, features,
-models, evaluation, or ensemble — contains a single conditional keyed on which dataset produced the data.
-`main.py`'s own docstring states this claim; the claim is independently verified, not just asserted, by the
-command Step 1C specifies:
+The load boundary (`loader.load()` returning `(X, y, meta)`) is not just a diagram convention — it is
+enforced structurally (the "Dataset Dependency Rule," `PROJECT_PLAN.md` Step 0D) and verified
+empirically, not just claimed. Step 1C's abstraction proof runs
 
 ```
-$ grep -rniE "exf2021|dohbrw|cic|bell|doh" --include=*.py . | grep -v "^./ingestion/"
+grep -rniE "exf2021|dohbrw|cic|bell|doh" --include=*.py . | grep -v "^./ingestion/"
 ```
 
-Run against the real codebase, every match falls into one of three sanctioned exceptions and none inside
-`preprocessing/`, `features/`, `models/`, `evaluation/`, or `ensemble/`:
-
-1. `main.py`'s CLI plumbing — the `--dataset` choices list and the registry-dispatch introspection in
-   `load_dataset()`, the one bridge between the CLI flag and `ingestion/registry.py`.
-2. `schema/unified.py`'s module docstring and `COLUMN_SOURCE` mapping — this is schema *definition*
-   (documenting where each unified column's raw arithmetic comes from per dataset), not pipeline logic.
-3. `tests/test_exf2021_loader.py` and one illustrative filename in an `evaluation/metrics.py` docstring
-   example — a test file for the concrete loader itself, and a comment, not executable logic.
-
-Full output preserved at `runs/metrics/abstraction_proof.txt`. This is the strongest form of evidence
-available for the abstraction claim: not "we tried to keep it clean," but "an automated search of every
-`.py` file in the repository finds zero dataset-specific logic outside the three declared, load-time-only
-locations."
+against the full codebase and requires the output to be empty outside three sanctioned exceptions. The
+saved output (`runs/metrics/abstraction_proof.txt`) confirms all matches fall into exactly those three
+categories — `main.py`'s CLI plumbing (the `--dataset` choices list and the registry-dispatch
+introspection, the one legitimate bridge between a CLI flag and `ingestion/registry.py`),
+`schema/unified.py`'s module docstring and `COLUMN_SOURCE` mapping (schema *definition*, documenting
+where each unified column's arithmetic comes from per dataset, not pipeline *logic*), and a test file for
+the concrete Dataset A loader plus one illustrative filename in a comment — and states explicitly: **no
+module under `preprocessing/`, `features/`, `models/`, `evaluation/`, or `ensemble/` contains any
+conditional logic keyed on a dataset name.** This is what makes Chapter 5's transfer-matrix experiment
+(train on one dataset, score on the other with zero retraining) a meaningful test of the behavioural
+abstraction rather than a claim taken on faith — the same `models/unsupervised.py` and `ensemble/cascade.py`
+that were built and unit-tested against synthetic data ran against real Dataset B with, per the Step 2E
+and Step 3C result logs, "zero changes."
 
 ## 7.2 Imbalance strategy and the structural leakage guard
 
-**The imbalance strategy is "resampling XOR reweighting, never both," decided per model, not a single
-blanket choice.** `preprocessing/pipeline.py`'s `build_pipeline()` docstring states the reasoning directly:
-SMOTE and `scale_pos_weight` are two different, largely redundant answers to the same class-imbalance
-problem, and applying both would double-compensate. The project resolves this per model rather than
-picking one rule for everything:
+**Two different, deliberately non-overlapping answers to class imbalance, chosen per model rather than
+applied uniformly** (`preprocessing/pipeline.py`, quoted below):
 
-- **XGBoost** uses `scale_pos_weight` (`use_smote=False`) — native cost-sensitive reweighting, computed per
-  dataset+framing at train time (`compute_scale_pos_weight()`), needs no synthetic rows at all.
-- **The Autoencoder** uses `use_smote=False` for a structural reason, not a preference: it fits on
-  benign-only training rows by design (Step 2F), so there is no minority class present in its training data
-  for SMOTE to act on — `use_smote=True` here would either error or synthesize nonsense from a
-  single-class fit.
-- Models without a native reweighting mechanism (Isolation Forest is unsupervised and doesn't take a class
-  weight at all; the CNN prior to Step 2F's design) use SMOTE inside the pipeline instead.
+- **SMOTE** (synthetic minority oversampling) for the CNN, inside the Pipeline, fit-time only.
+- **`scale_pos_weight`** (cost-sensitive reweighting) for XGBoost, computed once per dataset+framing from
+  the full training `y` (`compute_scale_pos_weight()`, `models/supervised.py`).
+- **Neither** for Isolation Forest (unsupervised — resampling a density estimator toward synthetic 1:1
+  balance would teach it the attack class is part of the normal density, defeating its entire premise
+  before it fits a single tree) or the Autoencoder (fit exclusively on benign rows — there is no minority
+  class present in its training data for SMOTE to act on in the first place).
 
-**The leakage guard is structural, not procedural.** The naive mistake — impute/scale/resample on the full
-dataset once, *then* cross-validate — lets information from each test fold leak into the transform that
-produced it, silently inflating every downstream score. The fix used here is to put every one of imputation,
-scaling, and resampling inside a single `imblearn.pipeline.Pipeline` object and hand the *whole pipeline*,
-untrained, to the cross-validator:
+The rule enforced throughout the codebase is **resampling xor reweighting, never both** — using SMOTE
+*and* `scale_pos_weight` on the same model would double-compensate for the same imbalance
+(`models/supervised.py` Step 2D notes, `PROJECT_PLAN.md` Step 2A point 3). This is a defended choice
+rather than a default: each of the four models gets the imbalance treatment that is actually coherent
+with its own fitting mechanism, documented per-model in Chapter 6.1.
+
+**The leakage guard is structural, not a matter of discipline.** The danger with any preprocessing step
+that touches the whole dataset before the train/test split — a scaler fit on all rows, a resampler run
+before folding — is that information from the test fold leaks into training, producing scores that look
+real but are not reproducible against genuinely unseen data. The fix, `build_pipeline()`
+(`preprocessing/pipeline.py`), makes this failure mode structurally unreachable rather than merely
+avoided by convention:
 
 ```python
-steps = [
-    ("imputer", SimpleImputer(strategy="median", keep_empty_features=True)),
-    ("scaler", StandardScaler()),
-]
-if use_smote:
-    steps.append(("smote", SMOTE(random_state=random_state)))
-steps.append(("estimator", estimator))
-return ImbPipeline(steps)
+def build_pipeline(estimator, use_smote: bool = True, random_state: int = 42) -> ImbPipeline:
+    steps = [
+        ("imputer", SimpleImputer(strategy="median", keep_empty_features=True)),
+        ("scaler", StandardScaler()),
+    ]
+    if use_smote:
+        steps.append(("smote", SMOTE(random_state=random_state)))
+    steps.append(("estimator", estimator))
+    return ImbPipeline(steps)
 ```
 
-(`preprocessing/pipeline.py`, `build_pipeline()`, verbatim.) Two details are load-bearing, not incidental:
+Two details matter beyond the step list itself. First, **`imblearn.pipeline.Pipeline`, never
+`sklearn.pipeline.Pipeline`** — sklearn's Pipeline has no concept of a resampling step (one that changes
+row count) and would silently apply SMOTE at *transform* time too, synthesizing fake minority rows inside
+the test fold and inflating every metric computed against it. This produces no error and no warning — a
+leakage bug indistinguishable from a real result until someone re-derives the numbers by hand. Second,
+this whole object — imputer, scaler, resampler, estimator — is handed to `StratifiedKFold` as one
+fittable unit, which means the scaler's mean/std and SMOTE's synthetic samples are recomputed from
+scratch inside every fold, using only that fold's training rows.
 
-- This **must** be `imblearn.pipeline.Pipeline`, never `sklearn.pipeline.Pipeline`. sklearn's Pipeline has no
-  concept of a step that changes the row count — handed a SMOTE step, it would apply it at *transform* time
-  on the test fold too, synthesizing fake test-fold minority samples and inflating every metric computed
-  against it. This is a leakage bug that produces no error, no warning, and a plausible-looking score —
-  exactly the kind that survives undetected to a final report. `imblearn`'s Pipeline is resampler-aware: it
-  applies SMOTE during `fit()` only, and is a pure passthrough at `predict()`/`transform()` time.
-- `StratifiedKFold` (`get_cv()`, same file) then **refits the entire pipeline from scratch inside each
-  fold** — the scaler's mean/std and SMOTE's synthetic samples are computed only from that fold's own
-  training rows, never from the fold's test rows or from data outside the fold entirely.
+This claim is verified empirically, not just asserted from the code. Step 2A's leakage-guard proof
+(`runs/metrics/leakage_guard_proof.json`) fits the pipeline on a synthetic 400/20 imbalanced frame across
+5 folds and records, per fold: `train_class_counts_before_smote` (380 / 20), `train_class_counts_after_smote`
+(380 / 380 — SMOTE balanced the training fold as intended), and `test_class_counts_untouched` (95 / 5 —
+identical across all 5 folds, exactly the untouched holdout counts, never resampled). The test fold's
+class counts never move, in every fold, which is the concrete evidence that SMOTE only ever sees training
+rows.
 
-**This is not just documented, it is asserted.** The Step 2A verification fits the pipeline on a synthetic
-frame with a known 95/5 imbalance and confirms, per fold: the scaler's `mean_` differs across folds (proof
-it genuinely refits, not just is *supposed to*), the post-SMOTE training class counts are balanced, and the
-test-fold class counts are untouched. Real output, `runs/metrics/leakage_guard_proof.json`:
-
-| Fold | Train (before SMOTE) | Train (after SMOTE) | Test (untouched) |
-|---|---|---|---|
-| 0–4 (all identical by construction of the synthetic frame) | {0: 380, 1: 20} | {0: 380, 1: 380} | {0: 95, 1: 5} |
-
-Every one of the 5 folds shows the same shape: SMOTE balances the *training* side only, and the test side's
-95/5 imbalance — the honest, undisturbed base rate — is preserved in every fold. This is the direct evidence
-that leakage is structurally prevented, not merely avoided by discipline.
+One real bug this structure caught in practice, worth recording here rather than only in the commit
+history: `SimpleImputer(strategy="median")` **without** `keep_empty_features=True` silently *drops* any
+column with zero observed values instead of imputing it to a constant. On real Dataset A data this
+collapsed the pipeline's output from 11 columns to 7 — the four `B_ONLY` columns (100% NaN by design, D2,
+Chapter 5.4) vanished rather than becoming the constant-zero features the schema intends. Caught by
+running the pipeline against real data, not a synthetic frame; fixed by adding the flag and confirmed with
+`warnings.simplefilter("error")` that the fixed pipeline raises zero warnings and preserves all 11
+columns on Dataset A. `keep_empty_features=True` is therefore the structural implementation of the D2
+observability finding, not a defensive afterthought: "this family carries no signal here" is a property of
+the pipeline's output shape, not merely a sentence in Chapter 5.
 
 ## 7.3 Hyperparameters and sensitivity sweeps
 
-All hyperparameters are read from `config/config.yaml` — no library defaults anywhere in the training code
-(`PROJECT_PLAN.md` Step 0D / this chapter's own rubric requirement).
+Every hyperparameter that trains a model is explicit in `config/config.yaml` — no library defaults are
+relied on anywhere in the codebase (Step 0D / this rubric item).
 
-| Model | Hyperparameters (all from `config.yaml`) |
-|---|---|
-| XGBoost | `n_estimators=400, max_depth=6, learning_rate=0.05, subsample=0.8, colsample_bytree=0.8, min_child_weight=3, scale_pos_weight=<computed per dataset+framing>, random_state=42` |
-| Isolation Forest | `n_estimators=200, max_samples=256, contamination=0.2 (base) / cascade-selected, max_features=0.8, random_state=42` |
-| 1D-CNN | `conv_filters=[32,64], kernel_size=3, padding=same, dropout=0.3, dense_units=64, optimizer=adam, learning_rate=0.001, batch_size=256, early_stopping_patience=5 (on validation PR-AUC), max_epochs=100 (cap; early stopping is what actually stops training), val_frac=0.2 (carved from the training fold only)` |
-| Autoencoder | `layers=[11,8,4,8,11], activation=relu, loss=mse, optimizer=adam, learning_rate=0.001, batch_size=256, max_epochs=100, threshold_percentile=95 (of benign training-fold reconstruction error only)` |
-| Cross-validation (all models) | `StratifiedKFold(n_splits=5, shuffle=True, random_state=42)` |
-
-**XGBoost `max_depth` sweep** (`{3, 6, 9, 12}`, Dataset B hard framing, real run,
-`runs/metrics/xgboost_dohbrw2020_hard_sweep.json`, figure `runs/figures/xgboost_sensitivity_dohbrw2020_hard.png`):
-
-| max_depth | F1 | FPR |
+| Model | Hyperparameter | Value |
 |---|---|---|
-| 3 | 0.99982 | 0.0 |
-| 6 (config default) | 0.99987 | 0.0 |
-| 9 | 0.99990 | 0.0 |
-| 12 | 0.99987 | 0.0 |
+| XGBoost | `n_estimators` | 400 |
+| | `max_depth` | 6 |
+| | `learning_rate` | 0.05 |
+| | `subsample` | 0.8 |
+| | `colsample_bytree` | 0.8 |
+| | `min_child_weight` | 3 |
+| | `scale_pos_weight` | computed per dataset+framing at train time |
+| Isolation Forest | `n_estimators` | 200 |
+| | `max_samples` | 256 |
+| | `contamination` | 0.2 (baseline; swept for the cascade, see below) |
+| | `max_features` | 0.8 |
+| 1D-CNN | `conv_filters` | [32, 64] |
+| | `kernel_size` | 3 (`padding="same"`) |
+| | `dropout` | 0.3 |
+| | `dense_units` | 64 |
+| | `optimizer` / `learning_rate` | Adam / 0.001 |
+| | `batch_size` | 256 |
+| | `early_stopping_patience` | 5 (on validation PR-AUC), `max_epochs` 100 cap |
+| | `val_frac` | 0.2, carved from the training fold only, never the test fold |
+| Autoencoder | `layers` | [11, 8, 4, 8, 11] |
+| | `activation` / `loss` | ReLU / MSE |
+| | `optimizer` / `learning_rate` | Adam / 0.001 |
+| | `batch_size` | 256, `max_epochs` 100 |
+| | `threshold_percentile` | 95th percentile of benign training-fold reconstruction error |
 
-**Interpretation:** F1 is flat to four decimal places across the entire depth range, and FPR is exactly 0.0
-at every depth. On Dataset B's 11-column feature set, the signal XGBoost is exploiting (the F1/F2/F3
-payload-volume and structural features) is separable enough that depth beyond 3 adds essentially nothing —
-the bottleneck is feature information content, not model capacity. This matches the same pattern
-Person A's independent Dataset A depth sweep found (`xgboost_exf2021_depth_sweep.json` — flat F1 across
-depth, FPR corroborated by a plain LogisticRegression smoke test): the flatness is a property of the
-feature set, not an XGBoost-specific quirk or a dataset-specific coincidence. `max_depth=6` is kept as the
-config default; the sweep justifies not needing to tune it further rather than motivating a change.
+All four models fix `random_state=42`; the 5-fold `StratifiedKFold` (`shuffle=True, random_state=42`)
+is shared across every model and dataset via `preprocessing.pipeline.get_cv()`.
 
-**Isolation Forest `contamination` sweep** (`{0.05, 0.1, 0.2, 0.3}`, Dataset B hard framing, real run,
-`runs/metrics/isoforest_dohbrw2020_hard_contamination_sweep.json`, figure
-`runs/figures/isoforest_dohbrw2020_hard_contamination_sweep.png`):
+**Sensitivity sweep 1 — XGBoost `max_depth ∈ {3, 6, 9, 12}`, Dataset A (221,315 rows,
+`families="full"`):**
 
-| contamination | F1 | Recall | FPR |
-|---|---|---|---|
-| 0.05 | 0.111 | 0.061 | 0.039 |
-| 0.10 | 0.228 | 0.137 | 0.063 |
-| 0.20 (config default) | 0.341 | 0.239 | 0.163 |
-| 0.30 | 0.414 | 0.331 | 0.268 |
+| depth | F1 | FPR |
+|---|---|---|
+| 3 | 0.8181 | 0.4049 |
+| 6 | 0.8182 | 0.4048 |
+| 9 | 0.8182 | 0.4049 |
+| 12 | 0.8182 | 0.4049 |
 
-**Interpretation:** unlike XGBoost's sweep, this one is *not* flat — recall and FPR both rise
-monotonically with contamination, and F1 rises too across the whole tested range, meaning the sweep never
-reaches a turning point within `{0.05, ..., 0.3}`. This is the same underlying weakness Step 3C's cascade
-result (Chapter 8.4) diagnoses: Isolation Forest is a comparatively weak detector on this feature set, so
-pushing contamination higher keeps trading FPR for recall favourably in raw F1 terms, but never reaches a
-contamination value that is both cheap (low FPR) and effective (high recall) at once — which is exactly why
-`select_cascade_contamination()`'s recall-first, FPR-budget-constrained selection rule (rather than a
-simple max-F1 pick) exists: a cascade's first stage cannot use "F1 is still climbing" as a stopping rule,
-because F1 does not penalise a permissive filter the way a lost detection downstream does.
+**Interpretation.** F1 and FPR move by less than 0.001 across the entire depth range — there is no
+visible overfit-onset within this grid to point to. Read alongside the high, depth-invariant FPR
+(~40%), the honest story is that depth is not the bottleneck: Dataset A's effective feature set is 7
+informative numeric columns (F1–F3; the other 4 are structurally constant, Chapter 5.4), and 400 boosted
+trees at depth 3 already extract essentially everything an axis-aligned split model can extract from 7
+continuous features. Going deeper neither helps (there is no additional structure in 7 continuous
+features for extra depth to find) nor hurts (there is not enough added capacity to memorise noise at
+n≈221K). The same ~0.40 FPR was independently seen from the plain LogisticRegression smoke test in Step
+2A′ — corroborating evidence that the ~40% FPR is a property of the feature set on this data, not an
+XGBoost-specific quirk.
 
----
+**Sensitivity sweep 2 — Isolation Forest `contamination ∈ {0.05, 0.10, 0.20, 0.30}`, Dataset B (both
+framings), `families="full"`:**
 
-## Appendix A — Setup and run commands
+| contamination | hard F1 | hard FPR | hard recall | easy F1 | easy FPR | easy recall |
+|---|---|---|---|---|---|---|
+| 0.05 | 0.1107 | 0.0387 | 0.0609 | 0.0582 | 0.0537 | 0.0359 |
+| 0.10 | 0.2283 | 0.0627 | 0.1370 | 0.1792 | 0.0916 | 0.1315 |
+| 0.20 | 0.3411 | 0.1627 | 0.2391 | 0.3326 | 0.1671 | 0.3218 |
+| 0.30 | 0.4137 | 0.2681 | 0.3307 | 0.3430 | 0.2697 | 0.4120 |
+
+**Interpretation.** Recall and FPR rise monotonically with contamination on both framings, as expected —
+flagging more rows as outliers necessarily catches more attacks at the cost of more false alarms. All
+four swept points sit under the cascade's 0.5 FPR budget on both framings, so `select_cascade_contamination`
+(the same rule Step 3C's cascade Stage 1 uses, deliberately maximising **recall** at tolerable FPR rather
+than maximising F1, because a first-stage filter that misses an attack is fatal while one that
+over-flags merely costs the next stage extra work) picks the highest swept value, `contamination=0.30`,
+on both framings — hard: recall 0.3307/FPR 0.2681/F1 0.4137; easy: recall 0.4120/FPR 0.2697/F1 0.3430.
+Because the whole grid stayed inside budget, this sweep does not locate where the recall/FPR tradeoff
+actually bends — the honest caveat is "0.30 is the best point *tested*," not "0.30 is an interior
+optimum." This ceiling is exactly what Chapter 8.4's real cascade result traces back to: even the best
+available Stage-1 recall (33.1% on hard framing) caps the whole cascade's end-to-end recall, since any
+row Isolation Forest discards never reaches XGBoost.
+
+## Appendix A — Setup and reproduction commands
 
 ```bash
-git clone https://github.com/ronica4/Final-Project-AI-Driven-Intrusion-Detection.git
-cd Final-Project-AI-Driven-Intrusion-Detection
+git clone <repo-url>
+cd maleware_detection_final_project
 
 python -m venv venv
-venv\Scripts\activate                       # Windows
-pip install -r requirements.txt             # includes --extra-index-url for CPU-only torch (D10)
+venv\Scripts\activate                 # Windows
+# source venv/bin/activate            # macOS/Linux
 
-# Place raw data (not included in the repo, see .gitignore):
-#   data/exf2021/       <- CIC-Bell-DNS-EXF-2021 raw CSVs, per Step 0B / docs/header_reconciliation_exf2021.md
-#   data/dohbrw2020/    <- CIRA-CIC-DoHBrw-2020: l2-benign.csv, l2-malicious.csv, l1-nondoh.csv
-#                          (l1-doh.csv is a redundant union of the two l2-* files -- never read, do not need it)
+pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
 
-# EDA / schema-validation smoke test (the only --mode wired into main.py as of this report):
-python main.py --dataset exf2021 --mode eda --config config/config.yaml
-python main.py --dataset dohbrw2020 --framing hard --mode eda --config config/config.yaml
-python main.py --dataset dohbrw2020 --framing easy --mode eda --config config/config.yaml
-python main.py --dataset dohbrw2020 --framing hard --families intersection --config config/config.yaml
+# Place raw data (never committed -- gitignored):
+#   data/exf2021/       <- CIC-Bell-DNS-EXF-2021 stateless CSVs (Attacks + Benign)
+#   data/dohbrw2020/    <- CIRA-CIC-DoHBrw-2020 CSV distribution (l1-nondoh.csv, l2-benign.csv, l2-malicious.csv)
 
-# Test suite:
-pytest -q
+# Verify the install:
+python -c "import pandas, sklearn, xgboost, imblearn, torch; print('ok')"
 
-# Model training / evaluation / cascade / cross-dataset runs are exercised directly via each module's
-# functions (models/supervised.py, models/deep.py, models/unsupervised.py, ensemble/cascade.py,
-# evaluation/cross_dataset.py) and the tests/ suite, rather than through main.py's --mode train/eval/
-# xdataset/cascade flags -- those flags are reserved in the CLI surface (see main.py's argparse choices)
-# but their dispatch bodies are not wired up (main.py raises NotImplementedError for any --mode other than
-# eda). This is stated plainly rather than implying a driver command exists that does not.
+# Smoke-test both loaders:
+python main.py --dataset exf2021 --mode eda
+python main.py --dataset dohbrw2020 --framing hard --mode eda
+python main.py --dataset dohbrw2020 --framing easy --mode eda
+python main.py --dataset dohbrw2020 --framing hard --families intersection --mode eda
+
+# Run the full test suite:
+pytest tests/ -v
+
+# Reproduce a specific model result, e.g. Step 3C's cascade on Dataset B hard framing:
+PYTHONPATH=. python -c "
+from config.loader import load_config          # or yaml.safe_load('config/config.yaml')
+from ingestion.dohbrw2020 import DohBrw2020Loader
+from ensemble.cascade import run_cascade, save_cascade_result
+config = load_config()
+X, y, meta = DohBrw2020Loader(config, framing='hard').load()
+result = run_cascade(X, y, config, meta, families='full')
+save_cascade_result('dohbrw2020_hard', result)
+"
 ```
 
-## Appendix B — Environment
+On Windows, `PYTHONPATH` must be set explicitly for any script run from outside the repository root
+(`PYTHONPATH="<repo-root>" venv\Scripts\python.exe -u <script>`) — the working directory alone is not
+sufficient for the `evaluation`/`models`/`ensemble` package imports to resolve.
 
-**Library versions** (`requirements.txt`, pinned, CPU-only PyTorch via `--extra-index-url
-https://download.pytorch.org/whl/cpu` so no separate install step is needed for D10):
+## Appendix B — Library versions and machine specifications
+
+**Library versions** (pinned exactly in `requirements.txt`, per Step 0A — the grader reproduces our
+numbers against these exact versions, not a `>=` range):
 
 | Library | Version |
 |---|---|
-| Python (venv) | 3.x (see `venv/pyvenv.cfg`) |
-| numpy | 2.5.2 |
+| Python | 3.12.1 |
 | pandas | 3.0.5 |
+| numpy | 2.5.2 |
 | scikit-learn | 1.9.0 |
+| scipy | 1.18.0 |
 | imbalanced-learn | 0.14.2 |
 | xgboost | 3.4.0 |
-| torch | 2.13.0+cpu |
-| scipy | 1.18.0 |
+| torch | 2.13.0+cpu (installed from the CPU wheel index, per D10 — avoids ~2 GB of unused CUDA packages) |
 | matplotlib | 3.11.1 |
 | seaborn | 0.13.2 |
+| PyYAML | 6.0.3 |
 | python-docx | 1.2.0 |
 | pytest | 9.1.1 |
 
-**Machine — Teammate B (this report's author, all Dataset B results):**
+**Machine specifications:**
 
-| | |
-|---|---|
-| OS | Windows 11 Pro, build 10.0.26200 |
-| CPU | 12th Gen Intel Core i5-1240P (12 cores / 16 logical processors) |
-| RAM | 16,083 MB (~16 GB) |
-| GPU | none used — all training is CPU-only by design (D10), PyTorch resolved to the `+cpu` wheel |
+| | Teammate B (this machine) | Teammate A |
+|---|---|---|
+| OS | Windows 11 Pro, 64-bit | *pending A's entry* |
+| CPU | 12th Gen Intel Core i5-1240P (12 cores / 16 logical processors) | *pending A's entry* |
+| RAM | 15.7 GB | *pending A's entry* |
+| GPU | None used — all model training is CPU-only per D10 (PyTorch CPU build; XGBoost/sklearn are CPU by default) | *pending A's entry* |
+| Role in this project | Dataset B (CIRA-CIC-DoHBrw-2020) local; Step 3C cascade, Step 2E/2F, report chapters | Dataset A (CIC-Bell-DNS-EXF-2021) local; Step 2G real-data run, Ch 8.1–8.3 |
 
-**Machine — Teammate A (Dataset A results):** pending — CPU/RAM/OS to be supplied by Teammate A and
-backfilled into this table before final assembly (Step 4H), flagged here rather than fabricated.
+Teammate A's row is left as an explicit placeholder rather than filled with an assumed value — flagged
+here, not fabricated, per the same convention used throughout Chapter 5 for content pending A's local
+run.
