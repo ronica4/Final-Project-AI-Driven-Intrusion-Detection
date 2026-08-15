@@ -195,22 +195,22 @@ Gate: **BLOCK** = gates the other person's work, gets priority · **PAR** = para
 | 2C — Feature ranking + **`SourceIP` leakage demo** → **Ch 4** | A | PAR | ✅ | Dataset A done: gain ranking + `sld` leakage demo produced a genuine surprise (importance dominates but score barely moves — traced to partial class overlap, not a methodology bug) + VIF (nearly all F1/F3 heavily collinear). `SourceIP` demo not run locally (Dataset B data locality, same as 2B/2D) |
 | 2D — XGBoost + `max_depth` sweep | A | PAR | ✅ | Dataset A done: F1=0.818 vs. majority-baseline F1=0.0; sweep flat across depth 3–12 (F1/FPR move <0.001) — see writeup below. **Dataset B backfilled by B** (13 Aug, real hard-framing data, code unchanged from A's commit): F1≈0.9999 flat across the entire depth sweep vs. majority-baseline F1=0.667 — near-perfect separation with all 5 leakage identifiers already dropped. **Flag for Ch 5/8: this complicates "hard framing = the real detection problem"** — packet-shape features alone appear almost trivially sufficient for DoH tunnel detection on this dataset, independent of the SourceIP leakage mechanism. Worth a paragraph, not silently filed away as a good number |
 | 2E — Isolation Forest + `contamination` sweep | B | PAR | ✅ | Both datasets done. Outlier premise breaks on both B-hard (F1 0.341 < majority 0.667) and A (F1 0.105 < majority 0.646, worse, ROC-AUC below chance 0.261) — attack isn't a minority density on either. Backfilled A's half 14 Aug |
-| 2F — 1D-CNN + Autoencoder | B | PAR | ⬜ | |
-| 2G — Cross-dataset transfer + shift plots + **ablation** → **Ch 5** | B | PAR | ⬜ | Needs 2A′ harness + A's trained XGBoost (Sync 3). Uses `families=F1_only` and `intersection` |
-| **SYNC 3** — four models trained, both datasets, both framings | A+B | BLOCK | ⬜ | |
+| 2F — 1D-CNN + Autoencoder | B | PAR | 🟡 | Dataset B hard done (CNN F1=0.9938, AE F1=0.4064 below majority — honest negative); Dataset B easy in progress. **Dataset A backfilled by A** (15 Aug): CNN F1=0.8177 (matches XGBoost's ceiling almost exactly — same FPR wall, different architecture); AE F1=0.0434, ROC-AUC=0.2643 below chance — second unsupervised model (after Isolation Forest) to invert on Dataset A. See writeup below |
+| 2G — Cross-dataset transfer + shift plots + **ablation** → **Ch 5** | B | PAR | ✅ | Module built + unit-tested by B (synthetic data, 11/11 passing); run for real, all 4 models, by A (15 Aug) once B sent the 3 raw Dataset B CSVs needed. **Major finding: transfer collapses to a trivial classifier in 7/8 cells, all 4 models** — root cause is near-total distribution shift (KS 0.89–1.00) on every intersection column, including F1. **Ablation hypothesis falsified unanimously**: F1-only transfers better in 0/8 cells. One exception: CNN's B→A cell keeps above-chance ROC-AUC (0.773) despite F1=0, suggesting threshold recalibration could partially help. See `report/drafts/ch05_harmonisation.md` §5.2 and writeup below |
+| **SYNC 3** — four models trained, both datasets, both framings | A+B | BLOCK | 🟡 | XGBoost/Isolation Forest: both datasets ✅. CNN/AE: Dataset A ✅, Dataset B hard ✅, Dataset B easy pending. Transfer matrix + ablation: real numbers in for all 4 models (15 Aug) |
 | **PHASE 3 — ENSEMBLE & FORENSICS** | | | | |
 | 3A — Sample-level FN/FP forensics → **Ch 8.1** | A | PAR | ✅ | Dataset A done: **plan's headline expectation did NOT hold** — light recall (99.95%) ≈ heavy recall (99.94%), not "heavy ≫ light." Real bottleneck is FPR (46,846 FPs vs. 58 FNs). Concrete FN/FP examples pulled via `sld` (interpretability only). Cross-model overlap (XGBoost vs. LogReg stand-in): FN overlap only 10%, FP overlap 99% — reshapes the Ch 8.4 cascade argument. **Changes the target for Step 3B — flagged for discussion before proceeding.** See writeup below |
 | 3B — **Iterative optimisation: before/after experiment** | A | PAR | ✅ | **Pivoted to FPR reduction** (3A ruled out a light-recall gap). Threshold sweep revealed a probability cliff (flat 0.05–0.69, collapses 0.70→0.72) — best 95%-recall-floor trade only cuts FPR 40.48%→39.72%. **Honest negative result**: threshold tuning can't fix Dataset A's FPR, strengthening the Ch 8.4 cascade argument — see writeup below |
-| 3C — `ensemble/cascade.py` → **Ch 8.4** | B | PAR | ⬜ | |
+| 3C — `ensemble/cascade.py` → **Ch 8.4** | B | PAR | ✅ | Dataset B hard, real data: cascade F1=0.5053, **below** standalone XGBoost (F1=0.9999) and below majority baseline (0.6667) — honest negative result, correctly diagnosed as Stage 1 (Isolation Forest, 33% recall) capping the whole cascade's recall. Draft: `report/drafts/ch08_4_cascade.md` |
 | 3D — `ensemble/llm_arbiter.py` → **Bonus** | B | PAR | ⬜ **DEFERRED** | **Not started by default** (D7). Add-back decision is an explicit agenda item at Sync 4 |
 | **SYNC 4** — all numbers frozen, no further experiments | A+B | BLOCK | ⬜ | |
 | **PHASE 4 — REPORT** | | | | |
 | 4A — Ch 1 threat characterisation + Ch 2 literature matrix | A | PAR | ✅ | Draft done: `report/drafts/ch01_threat_characterization.md`, `ch02_literature_review.md`. Caught+fixed a MITRE ID error (T1572 has no sub-techniques). |
 | 4B — Ch 3 EDA + Ch 4 feature ranking | A | PAR | ✅ | Draft done: `report/drafts/ch03_eda.md`, `ch04_feature_ranking.md`. Dataset B `SourceIP` demo + VIF flagged PENDING (data locality) |
-| 4C — Ch 5 harmonisation + Ch 6 model justification | B | PAR | ⬜ | Needs 4 papers, one per model |
-| 4D — Ch 7 pipeline + Appendices A & B | B | PAR | ⬜ | |
+| 4C — Ch 5 harmonisation + Ch 6 model justification | B | PAR | 🟡 | Draft done: `ch05_harmonisation.md`, `ch06_models.md`. §5.2 (transfer matrix numbers) was pending B's write, now backfilled by A with real 4-model results — needs a final pass to fold those numbers into the prose |
+| 4D — Ch 7 pipeline + Appendices A & B | B | PAR | ✅ | Draft done: `ch07_pipeline.md` |
 | 4E — Ch 8.1–8.3 error analysis, variance, benchmarking | A | PAR | 🟡 | §8.1 (partial, XGBoost+IsoForest) and §8.2b done — see `report/drafts/ch08_1_error_forensics.md`, `ch08_2b_base_rate_honesty.md`. CNN/AE rows PENDING; §8.2/8.3 blocked on Sync 3 + B's Ch 6.2 table |
-| 4F — Ch 8.4 cascade + Bonus chapter | B | PAR | ⬜ | |
+| 4F — Ch 8.4 cascade + Bonus chapter | B | PAR | ✅ | Draft done: `ch08_4_cascade.md`. Bonus chapter n/a — 3D deferred |
 | 4G — Executive Summary | A | PAR | ⬜ | Written last, max 1 page |
 | 4H — **Final assembly**, formatting, captions, 15-page cut | **B** | BLOCK | ⬜ | Single owner — a doc stitched by two people reads like it |
 | **PHASE 5 — SUBMISSION** | | | | |
@@ -1318,7 +1318,7 @@ exist when we trained.
 5. **Verification:** training curves saved; assert the AE threshold was computed from training-fold
    benign rows only; assert reproducibility across two runs with the same seed.
 
-**✅ RESULTS (15 Aug 2026) — Dataset B hard framing complete; easy framing in progress; Dataset A backfill handed to A.**
+**✅ RESULTS (15 Aug 2026) — Dataset A and Dataset B (hard framing) both complete; B's easy framing still in progress.**
 
 `models/deep.py` built: PyTorch CPU (D10) `CNNClassifier` (2 conv blocks 32/64, kernel 3, `padding="same"`,
 BatchNorm, dropout 0.3, dense 64, sigmoid) and `AutoencoderDetector` (`11→8→4→8→11`, ReLU, MSE, fit on
@@ -1349,9 +1349,29 @@ Forest so every model shares one input shape per dataset; `b_only_columns_all_na
   `runs/metrics/autoencoder_dohbrw2020_hard.json`, `runs/figures/autoencoder_dohbrw2020_hard_training_curve.png`.
 - **Dataset B easy framing** — running now (same two models, `framing="easy"`); results to follow in a
   follow-up commit rather than blocking this one.
-- **Dataset A** — intentionally not run here. A is taking this half directly (mirrors the Step 2E
-  pattern: `run_cnn`/`run_autoencoder` against `Exf2021Loader(config)`, `families="full"`) to avoid both
-  of us editing this section at once.
+
+Ran against real Dataset A (by A, 15 Aug, 221,315 rows, positive_rate 0.4772, `families="full"`):
+
+- **CNN**: F1 = **0.8177**, precision 0.6925, recall 0.9982, PR-AUC 0.6925, ROC-AUC 0.7970,
+  **FPR 0.4046** — vs. majority-baseline F1 = 0.6460. Nearly identical to XGBoost's own Dataset A result
+  (Step 2D: F1=0.8189) — high recall, same ~40% FPR wall every other Dataset-A supervised model in this
+  project hits. Not a coincidence: this is the same FPR bottleneck Step 3B already showed threshold
+  tuning cannot fix, now confirmed by a structurally different model architecture (convolution vs.
+  gradient-boosted trees) landing at the same ceiling — evidence the bottleneck lives in the feature set,
+  not any one model's decision function. Saved: `runs/metrics/cnn_exf2021_full.json`,
+  `runs/figures/cnn_exf2021_training_curve.png`.
+- **Autoencoder** (benign-only fit): F1 = **0.0434**, precision 0.3006, recall 0.0234, PR-AUC 0.3882,
+  **ROC-AUC 0.2643 — below chance (0.50)**. Far below the 0.6460 majority baseline; reported plainly, not
+  smoothed over. This is the **second** unsupervised/reconstruction-based model to land below-chance
+  ROC-AUC on Dataset A specifically — Isolation Forest (Step 2E) scored ROC-AUC 0.261 here, and now the
+  Autoencoder scores 0.264, two structurally unrelated unsupervised architectures (density-based
+  isolation vs. reconstruction error) agreeing almost exactly. This is a real, triangulated finding, not
+  a fluke of one algorithm: on Dataset A, attack traffic is not merely "not a minority density" (Step 2E's
+  original framing) — the unsupervised signal is inverted, benign rows look more anomalous/harder-to-
+  reconstruct than attack rows do. XGBoost and the CNN's strong supervised recall (both >99%) confirm the
+  attack/benign signal genuinely exists in the feature set; it just is not the kind of signal an
+  unsupervised, benign-shaped-density assumption can find. Saved:
+  `runs/metrics/autoencoder_exf2021_full.json`, `runs/figures/autoencoder_exf2021_training_curve.png`.
 
 ---
 
@@ -1397,6 +1417,36 @@ train on F1+F2+F3, and compare transfer. **If F1-only transfers better, the hypo
    non-equivalent across the boundary, with the NaN counts as evidence. **Frame as a result about what
    encrypted telemetry can and cannot reveal.** This is a Chapter 5 contribution, not a limitation
    paragraph.
+
+**✅ RESULTS (15 Aug 2026):** Module built and unit-tested by B (synthetic data, 11/11 passing) but never
+run against real data on her machine — she lacks Dataset A locally. Run for real, all four models, by A
+once B sent the three raw Dataset B CSVs needed (`l2-benign.csv`, `l2-malicious.csv`, `l1-nondoh.csv`;
+`l1-doh.csv` correctly omitted per the loader's own docstring — a redundant union of the two `l2-*`
+files). Full writeup: `report/drafts/ch05_harmonisation.md` §5.2.
+
+**Headline: transfer collapses to a trivial fixed-guess classifier in 7 of 8 transfer cells, across all
+four models** (XGBoost, Isolation Forest, CNN, Autoencoder) — not a single-model quirk. In-domain
+performance is strong and consistent with every other single-dataset result in this report (XGBoost/CNN
+both ≈F1=0.82 on A, ≈F1=0.99–1.00 on B); every transfer cell instead degenerates to either
+always-positive (F1=0.6667 on B / F1=0.6460 on A — exactly the majority baseline for each target) or
+always-negative (F1=0.0000). **One real exception:** CNN's train-B→test-A cell has F1=0.0000 but
+ROC-AUC=0.773 — well above chance — meaning its probability ranking still carries real signal after
+transfer even though its 0.5 decision threshold (calibrated on B's scale) calls zero of A's rows
+positive; a concrete case where threshold recalibration alone, not a full retrain, might partially
+rescue transfer, not tested here given time.
+
+**Ablation (D3): falsified unanimously — F1-only transfers better in 0 of 8 cells, across all four
+models.** Where the two feature sets are distinguishable at all (XGBoost's A→B cell: intersection
+F1=0.6667 vs. F1-only F1=0.0000), F1-only is strictly worse; everywhere else both feature sets collapse
+to the identical trivial classifier. Root cause from the distribution-shift analysis: **all 7
+intersection columns show KS 0.89–1.00 (near-total scale mismatch) — including F1's own three columns**,
+directly contradicting the plan's own premise that F1 is scale-stable across the boundary (`vol_total`:
+KS=1.0000, means 21.8 vs. 40,523.6, a ×1,859 ratio — Dataset A's `FQDN_count` and Dataset B's
+`FlowBytesSent` are behaviourally analogous, not numerically comparable). §5.4's observability section
+has been updated in place with this correction rather than silently left standing.
+
+Verified via `pytest tests/ -q` — 115 passed (B's 11 cross_dataset tests + 6 cascade tests + everything
+else) — before running against real data.
 
 ---
 

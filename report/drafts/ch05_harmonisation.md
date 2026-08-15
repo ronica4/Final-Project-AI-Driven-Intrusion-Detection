@@ -28,14 +28,16 @@ distinction that motivates the D3 ablation below.
 
 ## 5.2 Cross-dataset transfer, ablation, and distribution shift
 
-**Status: the transfer matrix, F1-only-vs-intersection ablation, and per-feature KS distribution-shift
-analysis (`evaluation/cross_dataset.py`, Step 2G) are built and unit-tested (11/11 passing on synthetic
-data) but have not been run against real data on this machine** — this machine never had Dataset A's raw
-files downloaded (Teammate B worked Dataset B locally throughout Phase 2), and the transfer matrix
-requires both datasets loaded in the same process. Dataset B's three required raw files
-(`l2-benign.csv`, `l2-malicious.csv`, `l1-nondoh.csv`) were handed to Teammate A, who has Dataset A
-locally, to run this step; results are pending and will be backfilled into this section once available,
-flagged inline rather than fabricated.
+**Status (15 Aug 2026): run against real data, all four models, by Teammate A** — Teammate B built and
+unit-tested `evaluation/cross_dataset.py` (11/11 passing on synthetic data) but could not run it for real,
+lacking Dataset A locally. Once Teammate B sent the three raw Dataset B CSVs (`l2-benign.csv`,
+`l2-malicious.csv`, `l1-nondoh.csv`), both datasets were available on Teammate A's machine and the module
+was run as designed, no code changes needed. Full numbers: `runs/metrics/cross_dataset_transfer_matrix_
+{model}.json`, `cross_dataset_ablation_{model}.json`, `cross_dataset_distribution_shift.json`.
+
+**Headline finding: transfer collapses to a trivial classifier in 7 of the 8 transfer cells tested, for
+every one of the four models.** This is not a per-model quirk — it recurs identically across XGBoost,
+Isolation Forest, the CNN, and the Autoencoder, four structurally unrelated architectures.
 
 The module itself implements exactly what the design calls for and is documented here so the eventual
 numbers slot into a pre-built frame rather than requiring restructuring:
@@ -55,6 +57,101 @@ numbers slot into a pre-built frame rather than requiring restructuring:
   intersection column, ranked descending, cross-checked against the ablation result — if the
   worst-transferring features are also the ones with the largest KS distance, that is two independent
   lines of evidence for the same conclusion.
+
+### 5.2.1 Transfer matrix — real results, all four models
+
+`mode="intersection"` (F1–F3, 7 columns) throughout. In-domain cells via 5-fold CV; transfer cells via a
+single fit-on-source/score-on-target pass, scaler fit on the source only.
+
+| model | train A→test A (in-domain) | train B→test B (in-domain) | train A→test B (transfer) | train B→test A (transfer) |
+|---|---|---|---|---|
+| XGBoost | F1=0.8182, recall=0.999, FPR=0.405 | F1=0.9999, recall=1.000, FPR=0.000 | F1=0.6667, recall=1.000, FPR=1.000, ROC-AUC=0.707 | F1=0.0000, recall=0.000, FPR=0.000, ROC-AUC=0.490 |
+| Isolation Forest | F1=0.1051, recall=0.075, FPR=0.313 | F1=0.3954, recall=0.276, FPR=0.121 | F1=0.6667, recall=1.000, FPR=1.000, ROC-AUC=0.579 | F1=0.6460, recall=1.000, FPR=1.000, ROC-AUC=0.379 |
+| CNN | F1=0.8176, recall=0.998, FPR=0.404 | F1=0.9927, recall=0.993, FPR=0.008 | F1=0.6667, recall=1.000, FPR=1.000, ROC-AUC=0.708 | F1=0.0000, recall=0.000, FPR=0.000, **ROC-AUC=0.773** |
+| Autoencoder | F1=0.0474, recall=0.026, FPR=0.049 | F1=0.6773, recall=0.560, FPR=0.051 | F1=0.6667, recall=1.000, FPR=1.000, ROC-AUC=0.671 | F1=0.6460, recall=1.000, FPR=1.000, ROC-AUC=0.359 |
+
+**Every in-domain cell is broadly consistent with that model's own single-dataset result elsewhere in
+this report** (XGBoost/CNN both land near F1≈0.82 on A and F1≈0.99–1.00 on B; Isolation Forest's weak
+in-domain numbers match Step 2E; the Autoencoder's below-chance ROC-AUC=0.335 on Dataset A echoes Step
+2E's Isolation Forest finding — see §5.4). **Every transfer cell collapses to (or very near) a trivial
+fixed-guess classifier** — F1=0.6667/recall=1.0/FPR=1.0 is exactly the always-positive baseline for a
+dataset whose positive rate is ~0.50 (Dataset B); F1=0.6460 at the same recall/FPR is the identical
+always-positive baseline for Dataset A (positive rate 0.4772); F1=0.0000/recall=0/FPR=0 is the
+mirror-image always-negative baseline. **No model, of four structurally different ones, produces a
+working cross-dataset detector.**
+
+**One genuine exception worth flagging, not smoothing over:** CNN's train-B→test-A cell has F1=0.0000
+(zero rows crossed the 0.5 decision threshold) but **ROC-AUC=0.773 — well above chance**, unlike every
+other trivial-classifier cell in the table (whose ROC-AUC sits at or near 0.50, or even below it for
+Isolation Forest's B→A cell at 0.379). This means the CNN's raw probability *ranking* still carries real
+signal after transfer — the model has not forgotten how to distinguish attack from benign on Dataset A's
+rescaled inputs, it has just landed a decision threshold (0.5, calibrated implicitly during training on
+Dataset B's own scale) that happens to call zero of Dataset A's rows positive. This suggests **threshold
+recalibration on a small target-domain sample**, not a full retrain, might partially rescue this one
+transfer direction for the CNN specifically — a concrete idea for future work, not tested here given time.
+
+### 5.2.2 The ablation (D3) — real results, all four models: hypothesis falsified, unanimously
+
+| model | direction | intersection F1 | F1-only F1 | F1-only transfers better? |
+|---|---|---|---|---|
+| XGBoost | A→B | 0.6667 | 0.0000 | **No** |
+| XGBoost | B→A | 0.0000 | 0.0000 | No (tied at the floor) |
+| Isolation Forest | A→B | 0.6667 | 0.6667 | No (tied — same trivial classifier) |
+| Isolation Forest | B→A | 0.6460 | 0.6460 | No (tied — same trivial classifier) |
+| CNN | A→B | 0.6667 | 0.6667 | No (tied — same trivial classifier) |
+| CNN | B→A | 0.0000 | 0.0000 | No (tied — same trivial classifier) |
+| Autoencoder | A→B | 0.6667 | 0.6667 | No (tied — same trivial classifier) |
+| Autoencoder | B→A | 0.6460 | 0.6460 | No (tied — same trivial classifier) |
+
+**F1-only transfers better in zero of eight cells, across all four models.** The plan's hypothesis — that
+F1 (payload volume) is the one family that survives the encryption boundary intact, and dropping the
+"lookalike" F2/F3 families should therefore *help* transfer — is not merely unconfirmed, it is
+**unanimously falsified**. Where the two feature sets are distinguishable at all (XGBoost's A→B cell),
+F1-only is strictly *worse*; everywhere else, both feature sets degenerate to the identical trivial
+classifier, meaning F1 alone provides no rescue either. §5.2.3 explains why: F1's own columns show among
+the *largest* distributional shifts of the entire intersection set, contradicting the premise that F1 is
+scale-stable across the boundary.
+
+### 5.2.3 Distribution shift — why transfer collapses
+
+Real data, Kolmogorov–Smirnov two-sample statistic per intersection column, Dataset A vs. Dataset B:
+
+| feature | family | KS statistic | mean (A) | mean (B) | ratio (B/A) |
+|---|---|---|---|---|---|
+| `vol_primary` | F1 | 1.0000 | 12.39 | 173.03 | ×14.0 |
+| `vol_secondary` | F1 | 1.0000 | 5.83 | 95.19 | ×16.3 |
+| `vol_total` | F1 | 1.0000 | 21.81 | 40,523.60 | ×1,858.6 |
+| `struct_segments` | F3 | 1.0000 | 4.68 | 70.79 | ×15.1 |
+| `rand_dispersion` | F2 | 0.9897 | 0.89 | 9.34 | ×10.5 |
+| `struct_max_segment` | F3 | 0.9011 | 8.17 | 220.02 | ×26.9 |
+| `rand_entropy` | F2 | 0.8916 | 2.48 | 1.00 | ×0.40 |
+
+Every column — **including every one of F1's three columns** — shows a KS statistic between 0.89 and
+1.00: near-total or fully disjoint support between the two datasets. `vol_total` alone differs by a
+factor of ~1,859× in raw scale, because Dataset A's realisation (`FQDN_count`, a small per-query integer)
+and Dataset B's (`FlowBytesSent`, cumulative bytes in a flow) are behaviourally analogous but not
+numerically comparable quantities (`schema/unified.py` `COLUMN_SOURCE`). **This directly contradicts
+§5.4's original premise that F1 is "the family with a genuinely direct counterpart on both sides"** — at
+the raw-distribution level it is not, and z-scoring (fit on the training/source dataset only, §5.3) does
+not repair this: standardising to mean 0 / std 1 preserves each dataset's own distribution *shape*, and
+the two shapes differ enough that a decision boundary learned in one dataset's standardised space does
+not carve up the other's the same way. Concretely: on Dataset A, "high z-scored volume" reliably signals
+attack; the same z-score region in Dataset B's differently-shaped standardised space behaves completely
+differently, so a model trained on A calls nearly everything in B's space "high" (the observed
+always-positive collapse), and the reverse direction collapses the opposite way.
+
+**What §5.2.1's ranking check (the module's own stated goal — cross-check the KS ranking against the
+ablation result) actually shows:** with every column at KS≥0.89, there is no meaningful ranking signal
+left to check against the ablation — the ablation's uniform, unanimous failure (§5.2.2) is fully
+consistent with a uniform, near-total distribution shift across every intersection column, not a
+graded one where some features transfer better than others. That uniformity is itself the finding: this
+is not "F2/F3 are worse proxies than F1," it is "none of the 7 raw-scale intersection columns are
+numerically comparable across this specific encryption boundary, F1 included."
+
+**What was not tried, given today's deadline:** a `log1p` transform applied uniformly to all three F1
+columns before scaling (already used for `rand_dispersion`'s Dataset-B realisation, §5.3, but not
+extended to F1), or a scaler fit jointly across both datasets' training halves rather than per-source —
+proposed remedies, not yet tested against this same transfer matrix.
 
 ## 5.3 Scaling remedies
 
@@ -109,16 +206,31 @@ apologise for.**
   distinct measurements, one direct and one inferred. This is exactly the distinction the D3 ablation
   (§5.2) is designed to quantify — if F2/F3 genuinely only proxy the plaintext signal, models trained on
   F1+F2+F3 should transfer worse across the boundary than models trained on F1 alone.
-- **F1 (payload volume) is the one family with a genuinely direct counterpart on both sides.** Encrypted
-  or not, a payload of N bytes still produces N bytes of DNS/DoH traffic — volume is a property of the
-  channel, not of whether the channel's content is legible, so F1 is the family predicted to transfer
-  best.
+- **F1 (payload volume) was predicted to be the one family with a genuinely direct counterpart on both
+  sides.** Encrypted or not, a payload of N bytes still produces N bytes of DNS/DoH traffic — volume is a
+  property of the channel, not of whether the channel's content is legible, so F1 was the family
+  predicted to transfer best.
+
+**Update (15 Aug 2026, once §5.2's real transfer numbers landed): the F1 prediction above did not
+hold, and the ablation falsifies it directly (§5.2.2).** Conceptual equivalence ("both sides measure
+payload volume") turned out not to imply numerical equivalence: §5.2.3's distribution-shift analysis
+shows F1's own three columns among the *most* distributionally shifted of the whole intersection set
+(KS 0.90–1.00; `vol_total` differs ×1,859 in raw scale, because Dataset A's realisation is a small
+per-query integer count and Dataset B's is cumulative flow bytes — related in concept, not in units).
+The corrected reading: **"can be computed on both sides" and "means the same numeric thing on both
+sides" are different claims, and this project's data says F1 satisfies only the first one** — no
+better than F2/F3, and on `vol_total` specifically, considerably worse. This sharpens, rather than
+undermines, the chapter's central claim: even the family assumed safest from the encryption boundary's
+effects still fails to transfer, so the boundary's practical cost is *larger* than the original D2
+argument (which only priced in F4/F5's total loss and F2/F3's degradation) accounted for.
 
 **Framed as a result about what encrypted telemetry can and cannot reveal:** an operator who only has
 access to encrypted DoH flow captures — the realistic case for anyone downstream of the resolver once
-DoH is in wide use — retains full visibility into payload volume, degraded-but-present visibility into
-encoding randomness and structural complexity, and zero visibility into anything Dataset A's stateless
-schema was ever able to see about rhythm or fan-out (because Dataset A never had that telemetry either).
-The practical implication for a defender choosing which signal families to invest detection effort in is
-therefore already implied by this table, independent of whatever the transfer matrix numbers eventually
-show.
+DoH is in wide use — retains conceptual visibility into payload volume, encoding randomness, and
+structural complexity, and zero visibility into anything Dataset A's stateless schema was ever able to
+see about rhythm or fan-out (because Dataset A never had that telemetry either). But §5.2's real numbers
+show that visibility does not equal **transferability**: a detector trained on one vantage point's raw
+feature scale cannot be deployed as-is on the other, for any of the four models tested, even on the
+families both sides can nominally compute. The practical implication for a defender is therefore not
+"invest in F1 over F2/F3" (the original hypothesis) but **"train and calibrate separately per vantage
+point — plaintext-DNS and encrypted-DoH require their own models, not one model deployed twice."**
