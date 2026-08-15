@@ -2120,15 +2120,18 @@ Nothing is blocked on B anymore — the ball is in A's court for the review pass
 ### Step 5A — AI use disclosure ⚠ REQUIRED
 **Owner: A+B · Gate: BLOCKING**
 
-**Revised 15 Aug 2026, per direct confirmation from the professor: raw conversation-log exports are
-not required.** The original plan below (full, unedited per-teammate session exports) reflected an
-earlier, stricter reading of the brief; both raw log files (including B's already-exported
-`ai_logs/claude_code_teammate_B.json`) have been removed accordingly. Disclosure requirement is now
-satisfied by `ai_use.md` at the repo root (tools used, working process, and a per-phase summary of
-prompts/questions) instead.
+**Revised again 15 Aug 2026 (later same day): raw logs are required after all.** An earlier revision
+this same day removed both raw log files on the belief the professor had waived the requirement; that
+belief did not hold up, so it was reversed back to the original plan — full, unedited per-teammate
+session exports, plus `ai_use.md` as a summary layered on top, not a replacement for it. B's log was
+restored from git history (`2dabf90`, never actually lost); A's was exported fresh from all 6 local
+Claude Code session transcripts (13–15 Aug), merged chronologically into one file in the same format
+B used, one JSON event per line. Both scanned for a pasted `HF_TOKEN` value — clean in both.
 
 - [x] `ai_use.md` written and pushed, covering both teammates' use of Claude Code
-- [x] Raw log exports removed as no longer required (B's file deleted; A's export skipped)
+- [x] `ai_logs/claude_code_teammate_A.json` — full, unedited, 6 sessions merged chronologically, 8,650 events
+- [x] `ai_logs/claude_code_teammate_B.json` — full, unedited, restored from `2dabf90`
+- [x] Both logs scanned for a pasted `HF_TOKEN` value — none found in either
 
 ### Step 5B — Clean-checkout verification and ZIP
 **Owner: A+B · Gate: BLOCKING · Est: 1.0 h**
@@ -2143,6 +2146,7 @@ prompts/questions) instead.
    - the code repository (`main.py`, `requirements.txt`, `README.md`, all modules)
    - `report/Final_Report.docx`
    - `ai_use.md`
+   - `ai_logs/claude_code_teammate_A.json`, `ai_logs/claude_code_teammate_B.json`
 5. **Both teammates unzip it on their own machine and confirm the contents.**
 
 **Completed 15 Aug 2026 by A.** ZIP built via `git archive HEAD` into a staging directory with

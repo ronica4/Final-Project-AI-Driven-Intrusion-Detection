@@ -5,10 +5,10 @@ this document explains how we used generative AI for the DNS exfiltration detect
 ## 1. tools used
 
 we used Claude Code (Anthropic) as a coding tool, one instance per teammate working on our own machines
-against a shared git repo. per direct confirmation from the professor (15 Aug 2026), raw conversation-log
-exports are not required for this disclosure; this document (tools, working process, and a per-phase
-summary of prompts and questions) satisfies the requirement on its own, so no `ai_logs/` files are
-included in the submission.
+against a shared git repo. full, unedited conversation-log exports for both teammates are included at
+`ai_logs/claude_code_teammate_A.json` and `ai_logs/claude_code_teammate_B.json` (one JSON event per line,
+chronological, one entry per session); this document summarises tools, working process, and a per-phase
+overview of prompts and questions on top of that raw record.
 
 ## 2. working process and what we learned
 
