@@ -195,9 +195,9 @@ Gate: **BLOCK** = gates the other person's work, gets priority · **PAR** = para
 | 2C — Feature ranking + **`SourceIP` leakage demo** → **Ch 4** | A | PAR | ✅ | Dataset A done: gain ranking + `sld` leakage demo produced a genuine surprise (importance dominates but score barely moves — traced to partial class overlap, not a methodology bug) + VIF (nearly all F1/F3 heavily collinear). **`SourceIP` demo now done too** (15 Aug, once Dataset B CSVs arrived): 21 distinct source IPs (testbed artifact confirmed), leakage column dominates importance (0.3818) yet clean model is marginally *better* (F1 0.9999 vs. 0.9998) — same practical conclusion as `sld`, sharper because Dataset B hard framing is already near-saturated (F1≈0.9999) so there's no residual error left for even an exclusive lookup feature to recover. See `ch04_feature_ranking.md` §4.3 |
 | 2D — XGBoost + `max_depth` sweep | A | PAR | ✅ | Dataset A done: F1=0.818 vs. majority-baseline F1=0.0; sweep flat across depth 3–12 (F1/FPR move <0.001) — see writeup below. **Dataset B backfilled by B** (13 Aug, real hard-framing data, code unchanged from A's commit): F1≈0.9999 flat across the entire depth sweep vs. majority-baseline F1=0.667 — near-perfect separation with all 5 leakage identifiers already dropped. **Flag for Ch 5/8: this complicates "hard framing = the real detection problem"** — packet-shape features alone appear almost trivially sufficient for DoH tunnel detection on this dataset, independent of the SourceIP leakage mechanism. Worth a paragraph, not silently filed away as a good number |
 | 2E — Isolation Forest + `contamination` sweep | B | PAR | ✅ | Both datasets done. Outlier premise breaks on both B-hard (F1 0.341 < majority 0.667) and A (F1 0.105 < majority 0.646, worse, ROC-AUC below chance 0.261) — attack isn't a minority density on either. Backfilled A's half 14 Aug |
-| 2F — 1D-CNN + Autoencoder | B | PAR | 🟡 | Dataset B hard done (CNN F1=0.9938, AE F1=0.4064 below majority — honest negative); Dataset B easy in progress. **Dataset A backfilled by A** (15 Aug): CNN F1=0.8177 (matches XGBoost's ceiling almost exactly — same FPR wall, different architecture); AE F1=0.0434, ROC-AUC=0.2643 below chance — second unsupervised model (after Isolation Forest) to invert on Dataset A. See writeup below |
+| 2F — 1D-CNN + Autoencoder | B | PAR | ✅ | Dataset B hard done (CNN F1=0.9938, AE F1=0.4064 below majority — honest negative). **Dataset B easy done** (15 Aug): CNN F1=0.9857, FPR 0.0061; AE F1=0.3731 — barely above its own trivial "always-positive" floor (0.3526), the weakest margin the AE has posted in this project. **Dataset A backfilled by A** (15 Aug): CNN F1=0.8177 (matches XGBoost's ceiling almost exactly — same FPR wall, different architecture); AE F1=0.0434, ROC-AUC=0.2643 below chance — second unsupervised model (after Isolation Forest) to invert on Dataset A. See writeup below |
 | 2G — Cross-dataset transfer + shift plots + **ablation** → **Ch 5** | B | PAR | ✅ | Module built + unit-tested by B (synthetic data, 11/11 passing); run for real, all 4 models, by A (15 Aug) once B sent the 3 raw Dataset B CSVs needed. **Major finding: transfer collapses to a trivial classifier in 7/8 cells, all 4 models** — root cause is near-total distribution shift (KS 0.89–1.00) on every intersection column, including F1. **Ablation hypothesis falsified unanimously**: F1-only transfers better in 0/8 cells. One exception: CNN's B→A cell keeps above-chance ROC-AUC (0.773) despite F1=0, suggesting threshold recalibration could partially help. See `report/drafts/ch05_harmonisation.md` §5.2 and writeup below |
-| **SYNC 3** — four models trained, both datasets, both framings | A+B | BLOCK | 🟡 | XGBoost/Isolation Forest: both datasets ✅. CNN/AE: Dataset A ✅, Dataset B hard ✅, Dataset B easy pending. Transfer matrix + ablation: real numbers in for all 4 models (15 Aug) |
+| **SYNC 3** — four models trained, both datasets, both framings | A+B | BLOCK | ✅ | XGBoost/Isolation Forest: both datasets ✅. CNN/AE: Dataset A ✅, Dataset B hard ✅, Dataset B easy ✅ (15 Aug). Transfer matrix + ablation: real numbers in for all 4 models (15 Aug). A ran `main.py --mode eda` end-to-end on both datasets on A's machine — clean |
 | **PHASE 3 — ENSEMBLE & FORENSICS** | | | | |
 | 3A — Sample-level FN/FP forensics → **Ch 8.1** | A | PAR | ✅ | Dataset A done: **plan's headline expectation did NOT hold** — light recall (99.95%) ≈ heavy recall (99.94%), not "heavy ≫ light." Real bottleneck is FPR (46,846 FPs vs. 58 FNs). Concrete FN/FP examples pulled via `sld` (interpretability only). Cross-model overlap (XGBoost vs. LogReg stand-in): FN overlap only 10%, FP overlap 99% — reshapes the Ch 8.4 cascade argument. **Changes the target for Step 3B — flagged for discussion before proceeding.** See writeup below |
 | 3B — **Iterative optimisation: before/after experiment** | A | PAR | ✅ | **Pivoted to FPR reduction** (3A ruled out a light-recall gap). Threshold sweep revealed a probability cliff (flat 0.05–0.69, collapses 0.70→0.72) — best 95%-recall-floor trade only cuts FPR 40.48%→39.72%. **Honest negative result**: threshold tuning can't fix Dataset A's FPR, strengthening the Ch 8.4 cascade argument — see writeup below |
@@ -214,7 +214,7 @@ Gate: **BLOCK** = gates the other person's work, gets priority · **PAR** = para
 | 4G — Executive Summary | A | PAR | ⬜ | Written last, max 1 page |
 | 4H — **Final assembly**, formatting, captions, 15-page cut | **B** | BLOCK | ⬜ | Single owner — a doc stitched by two people reads like it |
 | **PHASE 5 — SUBMISSION** | | | | |
-| 5A — AI log export, both teammates | A+B | BLOCK | ⬜ | Full and unedited. Curated = treated as missing |
+| 5A — AI log export, both teammates | A+B | BLOCK | 🟡 | **B done** (15 Aug): `ai_logs/claude_code_teammate_B.json`, full/unedited, scanned for `HF_TOKEN` (none pasted). A's export still pending. Full and unedited — curated = treated as missing |
 | 5B — Clean-checkout verification + ZIP assembly | A+B | BLOCK | ⬜ | |
 | **SYNC 5** — ZIP verified on both machines | A+B | BLOCK | ⬜ | |
 
@@ -1318,7 +1318,7 @@ exist when we trained.
 5. **Verification:** training curves saved; assert the AE threshold was computed from training-fold
    benign rows only; assert reproducibility across two runs with the same seed.
 
-**✅ RESULTS (15 Aug 2026) — Dataset A and Dataset B (hard framing) both complete; B's easy framing still in progress.**
+**✅ RESULTS (15 Aug 2026) — Dataset A and both Dataset B framings (hard + easy) all complete.**
 
 `models/deep.py` built: PyTorch CPU (D10) `CNNClassifier` (2 conv blocks 32/64, kernel 3, `padding="same"`,
 BatchNorm, dropout 0.3, dense 64, sigmoid) and `AutoencoderDetector` (`11→8→4→8→11`, ReLU, MSE, fit on
@@ -1347,8 +1347,21 @@ Forest so every model shares one input shape per dataset; `b_only_columns_all_na
   error has no mechanism to benefit from a favourable prior the way a supervised model does, so a
   near-50/50 label split does not help it the way it helps the CNN's baseline. Saved:
   `runs/metrics/autoencoder_dohbrw2020_hard.json`, `runs/figures/autoencoder_dohbrw2020_hard_training_curve.png`.
-- **Dataset B easy framing** — running now (same two models, `framing="easy"`); results to follow in a
-  follow-up commit rather than blocking this one.
+Ran against real Dataset B, easy framing (291,784 rows, `positive_rate=0.2141` — D8's ordinary-web-traffic
+negatives dominate, so the majority class is benign and the majority-baseline F1 for the attack class is
+literally 0.0; the more informative trivial floor is "always predict attack," F1=0.3526):
+
+- **CNN**: F1 = **0.9857**, precision 0.9781, recall 0.9936, PR-AUC 0.9982, ROC-AUC 0.9995, **FPR 0.0061**
+  — clears the always-positive trivial baseline (0.3526) by 0.63 F1 and drives FPR near zero, the same
+  pattern as the hard-framing CNN result above. Trained 50 epochs with early stopping, best
+  val PR-AUC = 0.9999. Saved: `runs/metrics/cnn_dohbrw2020_easy.json`.
+- **Autoencoder** (benign-only fit): F1 = **0.3731**, precision 0.5974, recall 0.2713, PR-AUC 0.4811,
+  ROC-AUC 0.7131, FPR 0.0498. **Report this honestly: F1 (0.3731) barely clears the always-positive
+  trivial baseline (0.3526) at all** — only +0.02 F1 — the weakest margin the Autoencoder has posted
+  anywhere in this project relative to its own dataset's trivial floor, consistent with its recurring
+  pattern (Dataset A, Dataset B hard) of being the project's structurally weakest model whenever the
+  positive class isn't the majority it was implicitly tuned against via the 95th-percentile benign
+  threshold. Final train MSE = 0.0405. Saved: `runs/metrics/autoencoder_dohbrw2020_easy.json`.
 
 Ran against real Dataset A (by A, 15 Aug, 221,315 rows, positive_rate 0.4772, `families="full"`):
 
