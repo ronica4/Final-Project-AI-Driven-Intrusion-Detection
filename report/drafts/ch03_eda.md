@@ -10,7 +10,7 @@
 
 Light class retained at 100% (D5) — the analytical point. Easy framing's non-DoH traffic (ordinary HTTPS,
 trivially separable) excluded from hard framing so it can't inflate the headline score (D8). Resampling
-happens per-fold via SMOTE, never on the full dataset.
+happens per-fold via SMOTE only, never on the full dataset.
 
 ## 3.2 Statistical significance — Cliff's delta, not p-value
 
@@ -21,8 +21,8 @@ with **Cliff's delta** (Romano et al. 2006: negligible <0.147, small <0.33, medi
 Dataset A (221,315 rows; 4 B_ONLY columns untestable): full table in Appendix D.1. **5 of 7 features carry
 a large real effect (δ ≥0.474: vol_secondary +0.551, vol_total +0.564, rand_dispersion +0.591,
 struct_segments +0.533); 2 (`rand_entropy` −0.125, `struct_max_segment` −0.145) do not**, despite both
-being "significant" by p-value alone — corroborated in Ch. 4's gain importance. Dataset B, hard framing:
-all 11 columns testable, 4 large, 6 medium — a richer profile, consistent with richer flow telemetry.
+"significant" by p-value alone — corroborated in Ch. 4's gain importance. Dataset B, hard framing: all 11
+columns testable, 4 large, 6 medium — richer profile, consistent with richer flow telemetry.
 
 ## 3.3 Correlation and multicollinearity
 

@@ -5,7 +5,7 @@
 DGA = rendezvous problem (malware computes candidate C2 domains from a shared seed, TA0011 C2): "does this
 domain look machine-generated?" DNS exfiltration = carrier-capacity problem (fixed destination; the domain
 name itself is the transport, stolen bytes encoded as subdomain labels, TA0010 Exfiltration): "is data
-smuggled inside this query name?" Different mechanism, feature space, failure mode. This project targets
+smuggled inside this query name?" Different mechanism, feature space, failure mode — this project targets
 exfiltration only.
 
 ## 1.1 MITRE ATT&CK mapping
@@ -38,7 +38,6 @@ exfiltration only.
 B's F2/F3 are statistical proxies (packet-length variability), not text-level equivalents — DoH hides the
 label. F4/F5 unobservable on A by construction (stateless schema, no timing/fan-out telemetry) — central
 empirical claim (Ch. 5): feature families survive the plaintext→encrypted boundary by different amounts.
-Provenance: `schema/unified.py`.
 
 ## 1.4 Throughput/stealth tradeoff → heavy vs. light
 
@@ -46,5 +45,4 @@ Max-throughput exfiltration finishes fast but spikes volume; throttled exfiltrat
 at the cost of time. Dataset A operationalizes this as **heavy_attack** (323,698) vs. **light_attack**
 (53,978) — Nadler et al.'s (2019) "low-throughput exfiltration" (Ch. 2). Predicted stealth advantage does
 **not** show up as a detection gap (Ch. 8.1): recall is statistically indistinguishable between subclasses
-(99.95% light vs. 99.94% heavy) — the real cost of this threat model is false positives, not a
-light-class blind spot.
+(99.95% light vs. 99.94% heavy) — the real cost here is false positives, not a light-class blind spot.

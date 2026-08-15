@@ -21,8 +21,8 @@ since per-stage latency is being measured):
 | 2 — XGBoost | 2,413 | 1,732 confident, 681 escalate (28.2%) | 2.36 s | 5.7 μs |
 | 3 — Escalation | 2,413 | 681 escalated: 0 via probability band, 681 via disagreement | AE fit 31.9 s | 23.9 μs (AE) |
 
-Contamination (0.30) selected by `select_cascade_contamination(max_tolerable_fpr=0.5)` at recall
-0.331/FPR 0.268. 681 escalations sits within the "few hundred" target.
+Contamination (0.30) selected by `select_cascade_contamination(max_tolerable_fpr=0.5)`, recall
+0.331/FPR 0.268; 681 escalations sits within the "few hundred" target.
 
 | | Precision | Recall | F1 | PR-AUC | ROC-AUC | FPR |
 |---|---|---|---|---|---|---|

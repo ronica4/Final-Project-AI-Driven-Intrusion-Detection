@@ -1,7 +1,6 @@
 # Chapter 8.3 — Benchmark Comparison Against Published Results
 
-Four papers, one per model architecture (Ch. 6.2). Discrepancies attributed to specific named causes, not
-a vague "different setup."
+Four papers, one per model architecture (Ch. 6.2). Discrepancies attributed to specific named causes.
 
 | Model | Published | Published metrics | This project | Direction |
 |---|---|---|---|---|

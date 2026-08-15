@@ -1,7 +1,6 @@
 # Chapter 8.1 — Sample-Level Forensic Error Analysis
 
-`evaluation/error_analysis.py` ran against all four architectures, both datasets, zero code changes —
-harness is model-agnostic by construction.
+`evaluation/error_analysis.py` ran against all four architectures, both datasets, zero code changes.
 
 ## 8.1.1 Confusion matrices
 
@@ -31,7 +30,7 @@ every other malicious row uses.
 | Autoencoder | hard | 0.8400 | 0.2681 | 0.0508 | 0.4064 | 0.7903 |
 
 Dataset B: XGBoost/CNN stay excellent; unsupervised models better than on A (F1 0.34–0.41 vs. 0.10–0.04),
-neither clears a useful threshold.
+still neither clears a useful threshold.
 
 ## 8.1.2 Per-subclass recall — heavy vs. light (Dataset A)
 
@@ -49,30 +48,28 @@ that light/heavy sit at statistically equal distance from benign.
 
 `sld` pulled for interpretability only, never as a feature.
 
-- **XGBoost** FNs: `msftncsi`, `gstatic`, `googleapis`, `office`, `wireshark` (trusted-name camouflage).
-  FPs: `microsoft`, `windows`, `192` (numeric-shaped), `atester`.
-- **CNN** FNs: `bing`, `microsoft`, `gstatic` (overlaps XGBoost). FPs: `atester`/`local` (shared), plus
-  NetBIOS-style strings — legitimate, high-entropy by design.
-- **Isolation Forest** FNs: top-8 all `sld="192"` — an XGBoost false *positive*. FPs: `gov`, `microsoft`,
+- **XGBoost** FNs: `msftncsi`, `gstatic`, `googleapis`, `office`, `wireshark` (trusted-name camouflage). FPs:
+  `microsoft`, `windows`, `192` (numeric-shaped), `atester`.
+- **CNN** FNs: `bing`, `microsoft`, `gstatic` (overlaps XGBoost). FPs: `atester`/`local`, plus NetBIOS-style
+  strings — legitimate, high-entropy by design.
+- **Isolation Forest** FNs: top-8 all `sld="192"`, an XGBoost false *positive*. FPs: `gov`, `microsoft`,
   `local`, `wordpress`, `blogspot`.
-- **Autoencoder** FNs: top-8 all `sld="224"` — same numeric pattern. FPs: `town`, `city`, `gov`, `112`,
+- **Autoencoder** FNs: top-8 all `sld="224"`, same numeric pattern. FPs: `town`, `city`, `gov`, `112`,
   `blogspot`.
 
-`microsoft` in 3/4 models' confident-FP lists; numeric-shaped `sld` sits on *both* sides of the confusion
-matrix by model type — FP for supervised, FN for unsupervised: suspicious to a boundary trained on
-structural weirdness, unremarkable to a density/reconstruction method with no attack examples.
+`microsoft` in 3/4 models' confident-FP lists; numeric-shaped `sld` sits on both sides of the confusion
+matrix by model type — FP for supervised, FN for unsupervised.
 
 ## 8.1.4 Cross-model failure comparison
 
-Every pairwise comparison (Dataset A) vs. a **chance baseline** (`n_a × n_b / N`) — raw overlap alone
-can't distinguish "related" from "both fail a lot." Full 12-row table in Appendix D.4. **(1)** Supervised
-models fail on nearly the same rows, far beyond chance (407×/2.47×) — ensembling won't fix FPR. **(2)**
-every supervised/unsupervised pairing shows below-chance overlap — structurally different failure
-sources. **(3)** unsupervised FNs sit almost exactly at chance (1.02×) despite deceptive 99.99% raw
-overlap — both simply miss so much (92.6%/97.7%) this is near what independence alone produces. **(4)**
-unsupervised FPs, unlike FNs, agree more than chance (3.0×) — both rely on "distance from the bulk of the
-data." Neither is a usable peer detector on A (recall 7.45%, 2.34%), but their errors are usefully
-*different* where they succeed — the first-stage-filter role the cascade (8.4) assumes.
+Every pairwise comparison (Dataset A) vs. a **chance baseline** (`n_a × n_b / N`). Full 12-row table in
+Appendix D.4. **(1)** Supervised models fail on nearly the same rows, far beyond chance (407×/2.47×) —
+ensembling won't fix FPR. **(2)** every supervised/unsupervised pairing is below-chance — different failure
+sources. **(3)** unsupervised FNs sit near chance (1.02×) despite 99.99% raw overlap — both simply miss so
+much (92.6%/97.7%) this is near what independence produces. **(4)** unsupervised FPs agree more than chance
+(3.0×) — both rely on "distance from the bulk of the data." Neither is a usable peer detector on A (recall
+7.45%, 2.34%), but their errors differ where they succeed — the first-stage-filter role the cascade (8.4)
+assumes.
 
 ## 8.1.5 Step 3B before/after table
 

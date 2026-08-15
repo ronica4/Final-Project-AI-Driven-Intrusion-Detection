@@ -3,8 +3,8 @@
 ## 5.1 Unified schema specification
 
 Every loader emits the same 11 columns, same order, grouped into five behavioural families
-(`schema/unified.py`). Column order matters: the 1D-CNN's receptive field (Ch. 6.1) only works because
-related features sit physically adjacent.
+(`schema/unified.py`). Column order matters — the 1D-CNN's receptive field (Ch. 6.1) only works because
+related features sit adjacent.
 
 | Family | Columns | Role | Security meaning |
 |---|---|---|---|
@@ -20,10 +20,10 @@ string measures — motivating the ablation below.
 
 ## 5.2 Cross-dataset transfer, ablation, distribution shift
 
-Run against real data, all four models (`evaluation/cross_dataset.py`). **Headline: transfer collapses to
-a trivial classifier in 7 of 8 cells, all four models.** In-domain (5-fold CV) vs. transfer
-(fit-on-source/score-on-target), `mode="intersection"` (7 shared columns). Scaler fit on source only,
-simulating honest deployment.
+Run against real data, all four models (`evaluation/cross_dataset.py`). **Headline: transfer collapses to a
+trivial classifier in 7 of 8 cells, all four models.** In-domain (5-fold CV) vs. transfer
+(fit-on-source/score-on-target), `mode="intersection"` (7 shared columns), scaler fit on source only
+(honest-deployment simulation).
 
 | model | A→A | B→B | A→B (transfer) | B→A (transfer) |
 |---|---|---|---|---|
@@ -53,8 +53,8 @@ differ enough that a boundary learned in one standardised space doesn't carve th
 
 ## 5.3 Scaling remedies
 
-Inside `build_pipeline()`: **z-scoring within dataset** (fit per-fold/source only, transfer cells stay an
-honest simulation); **`log1p` on heavy-tailed volume features** (`rand_dispersion`'s B realisation is
+Inside `build_pipeline()`: **z-scoring within dataset** (fit per-fold/source only, transfer stays honest);
+**`log1p` on heavy-tailed volume features** (`rand_dispersion`'s B realisation is
 `log1p(PacketLengthVariance)`); **median imputation** (`keep_empty_features=True` — A's all-NaN B_ONLY
 columns imputed to a constant rather than silently dropped, so "no signal here" becomes structural).
 
@@ -70,4 +70,4 @@ F2/F3.
 
 **Practical implication:** an operator with only encrypted DoH captures retains conceptual visibility into
 volume, randomness, structural complexity, zero visibility into rhythm or fan-out — but visibility ≠
-**transferability**. Defender's takeaway: **train and calibrate separately per vantage point.**
+**transferability**. Takeaway: **train and calibrate separately per vantage point.**

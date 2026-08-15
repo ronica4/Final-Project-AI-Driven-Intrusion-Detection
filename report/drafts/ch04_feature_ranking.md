@@ -1,8 +1,8 @@
 # Chapter 4 — Feature Ranking and the Leakage Demonstration
 
-We deliberately cheat, catch ourselves, and report the honest number — via two structurally different
+We deliberately cheat, catch ourselves, and report the honest number, via two structurally different
 leakage mechanisms: Dataset A's `sld` (partial-overlap identifier) and Dataset B's `SourceIP`
-(genuinely-exclusive identifier). Both reach the same practical conclusion by different routes.
+(genuinely-exclusive identifier) — same practical conclusion, different routes.
 
 ## 4.1 Gain-based feature importance (Dataset A, clean run, `sld`/timestamp excluded)
 

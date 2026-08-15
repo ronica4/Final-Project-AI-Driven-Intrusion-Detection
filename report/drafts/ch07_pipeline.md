@@ -12,11 +12,11 @@
       --> ensemble/cascade.py (Step 3C: IsoForest -> XGBoost -> escalation)
 ```
 
-Load boundary (`loader.load()` → `(X, y, meta)`) enforced structurally (Dataset Dependency Rule, Step 0D)
-and verified empirically: Step 1C's abstraction proof greps for dataset-name literals, requires empty
-output outside three sanctioned exceptions (CLI plumbing, `schema/unified.py`'s `COLUMN_SOURCE`, one test
-file). No module under `preprocessing/`, `features/`, `models/`, `evaluation/`, `ensemble/` contains
-dataset-keyed logic — what makes Ch. 5's transfer matrix a meaningful test rather than a claim on faith.
+Load boundary (`loader.load()` → `(X, y, meta)`) enforced structurally (Dataset Dependency Rule, Step 0D),
+verified empirically: Step 1C's abstraction proof greps for dataset-name literals, requires empty output
+outside three sanctioned exceptions (CLI plumbing, `schema/unified.py`'s `COLUMN_SOURCE`, one test file).
+No module under `preprocessing/`, `features/`, `models/`, `evaluation/`, `ensemble/` contains dataset-keyed
+logic — what makes Ch. 5's transfer matrix a meaningful test, not a claim on faith.
 
 ## 7.2 Imbalance strategy and the structural leakage guard
 
@@ -43,30 +43,15 @@ warning. **The whole object goes to `StratifiedKFold` as one fittable unit**, so
 recompute from scratch inside every fold, training rows only — verified via a synthetic 400/20 frame
 across 5 folds confirming test-fold class counts (95/5) never move.
 
-Bug caught by this structure: `SimpleImputer(strategy="median")` **without** `keep_empty_features=True`
+Bug caught by this structure: `SimpleImputer(strategy="median")` without `keep_empty_features=True`
 silently drops any all-NaN column instead of imputing to a constant — on real Dataset A this collapsed 11
 columns to 7 (the four B_ONLY columns vanished). Fixed by adding the flag.
 
 ## 7.3 Hyperparameters and sensitivity sweeps
 
-Every hyperparameter explicit in `config/config.yaml` — no library defaults relied on.
-
-| Model | Hyperparameter | Value |
-|---|---|---|
-| XGBoost | `n_estimators`/`max_depth`/`learning_rate` | 400 / 6 / 0.05 |
-| | `subsample`/`colsample_bytree`/`min_child_weight` | 0.8 / 0.8 / 3 |
-| | `scale_pos_weight` | computed per dataset+framing |
-| Isolation Forest | `n_estimators`/`max_samples`/`max_features` | 200 / 256 / 0.8 |
-| | `contamination` | 0.2 baseline (swept — Appendix C) |
-| 1D-CNN | `conv_filters`/`kernel_size`/`dropout`/`dense_units` | [32,64] / 3 / 0.3 / 64 |
-| | `optimizer`/`learning_rate`/`batch_size` | Adam / 0.001 / 256 |
-| | `early_stopping`/`max_epochs`/`val_frac` | 5 (val PR-AUC) / 100 / 0.2 |
-| Autoencoder | `layers` | [11, 8, 4, 8, 11] |
-| | `activation`/`loss`/`optimizer`/`learning_rate` | ReLU / MSE / Adam / 0.001 |
-| | `batch_size`/`max_epochs`/`threshold` | 256 / 100 / 95th pct. benign error |
-
-All models fix `random_state=42`; 5-fold `StratifiedKFold` shared across every model/dataset. Two
-sensitivity sweeps (Appendix C) confirm headline results aren't artifacts of an untuned hyperparameter:
+Every hyperparameter explicit in `config/config.yaml` — no library defaults relied on. Full table in
+Appendix C. All models fix `random_state=42`; 5-fold `StratifiedKFold` shared across every model/dataset.
+Two sensitivity sweeps (Appendix C) confirm headline results aren't artifacts of an untuned hyperparameter:
 XGBoost F1/FPR move under 0.001 across `max_depth ∈ {3,6,9,12}`; Isolation Forest recall/FPR rise
 monotonically with `contamination` (0.30 chosen for the cascade — the ceiling Ch. 8.4 traces back to).
 
@@ -128,7 +113,21 @@ produced under the versions listed.
 | GPU | None — CPU-only per D10 | None — same CPU-only convention |
 | Role | Dataset B local; Step 3C cascade, 2E/2F, report chapters | Dataset A local; Step 2G real-data run, Ch 8.1-8.3 |
 
-## Appendix C — Sensitivity sweeps
+## Appendix C — Full hyperparameter table and sensitivity sweeps
+
+| Model | Hyperparameter | Value |
+|---|---|---|
+| XGBoost | `n_estimators`/`max_depth`/`learning_rate` | 400 / 6 / 0.05 |
+| | `subsample`/`colsample_bytree`/`min_child_weight` | 0.8 / 0.8 / 3 |
+| | `scale_pos_weight` | computed per dataset+framing |
+| Isolation Forest | `n_estimators`/`max_samples`/`max_features` | 200 / 256 / 0.8 |
+| | `contamination` | 0.2 baseline (swept below) |
+| 1D-CNN | `conv_filters`/`kernel_size`/`dropout`/`dense_units` | [32,64] / 3 / 0.3 / 64 |
+| | `optimizer`/`learning_rate`/`batch_size` | Adam / 0.001 / 256 |
+| | `early_stopping`/`max_epochs`/`val_frac` | 5 (val PR-AUC) / 100 / 0.2 |
+| Autoencoder | `layers` | [11, 8, 4, 8, 11] |
+| | `activation`/`loss`/`optimizer`/`learning_rate` | ReLU / MSE / Adam / 0.001 |
+| | `batch_size`/`max_epochs`/`threshold` | 256 / 100 / 95th pct. benign error |
 
 **XGBoost `max_depth ∈ {3, 6, 9, 12}`, Dataset A (221,315 rows, `families="full"`):**
 
