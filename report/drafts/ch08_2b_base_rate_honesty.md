@@ -1,8 +1,8 @@
 # Chapter 8.2b — The base-rate honesty paragraph
 
-> Status: self-contained, complete. Uses only Dataset A numbers already measured in Steps 2D/3A/3B —
-> no dependency on Teammate B's remaining models. This slots into Chapter 8 alongside §8.1/§8.2 once
-> those are assembled (§8.2 itself is still blocked on Step 2G).
+> Status (15 Aug 2026): complete, both datasets. Dataset A uses numbers already measured in Steps
+> 2D/3A/3B; Dataset B's real FPR was pulled once its raw CSVs were local (`error_analysis_xgboost_
+> dohbrw2020.json`), resolving the gap this section originally flagged.
 
 ## None of this project's framings reflect a realistic deployment base rate
 
@@ -64,14 +64,42 @@ probability distribution (Step 3B's near-step-function finding) that no single t
 which is the concrete, quantified reason a cascade (Chapter 8.4) — rather than a better-tuned single
 model — is the right response to this dataset's false-positive problem.
 
+## Dataset B: the same extrapolation, a completely different SOC story
+
+Run for real by A, 15 Aug, once Dataset B's raw CSVs were local (`runs/metrics/error_analysis_xgboost_dohbrw2020.json`,
+out-of-fold, 5-fold CV, 39,614 rows): **0 false positives observed across all 19,807 held-out benign
+rows.** Reporting this honestly requires one careful step rather than a naive "0% FPR forever" claim: a
+measured 0/19,807 does not mean the *true* underlying FPR is exactly zero, only that it is small — the
+standard rule-of-three 95% upper bound for a zero-count proportion is `3/n`, i.e. **≤0.0151% with 95%
+confidence**, not 0.0000%. That upper bound, not the naive point estimate, is what the production
+extrapolation below uses — the statistically defensible honest number, not the most flattering one.
+
+| | Dataset A, before (t=0.50) | Dataset A, after (t=0.70) | **Dataset B, hard framing** |
+|---|---|---|---|
+| Measured recall | 99.95% | 98.03% | **99.98%** |
+| Measured FPR (Dataset B: 95% upper bound, not the naive 0%) | 40.48% | 39.72% | **≤0.0151%** |
+| True positives caught / day | ≈ 1,000 | ≈ 980 | **≈ 1,000** |
+| False alerts / day | ≈ 4,048,000 | ≈ 3,972,000 | **≈ 1,515** |
+| Total alerts / day | ≈ 4,049,000 | ≈ 3,973,000 | **≈ 2,514** |
+| Analyst-facing precision | ≈ 0.025% (1 in ~4,050) | ≈ 0.025% (1 in ~4,052) | **≈ 39.8% (1 in ~2.5)** |
+
+**This is a genuinely different SOC story, not a marginal improvement.** At the same illustrative
+production scale and base rate, Dataset B's XGBoost model would produce an alert queue where roughly 2 in
+every 5 alerts is a real attack — a queue an analyst can actually work — versus Dataset A's ~4 million
+false alarms burying ~1,000 real detections. The contrast sharpens, rather than complicates, this
+chapter's central point: the base-rate honesty argument is not "every detector in this project is
+unusable at production scale," it is "the *feature set*, not the base-rate math itself, determines
+whether a detector is production-viable" — Dataset B's packet-shape features apparently separate attack
+from benign traffic far more cleanly than Dataset A's F1–F3 features do, a finding fully consistent with
+Chapter 8.1's confusion matrices (Dataset B's XGBoost has essentially zero error mass to work with;
+Dataset A's has tens of thousands of false positives). It is also a pointed irony worth naming directly:
+Chapter 5 already showed a detector trained on one of these datasets **cannot be deployed on the other at
+all** (transfer collapses completely) — so Dataset B's favourable production story is not something
+Dataset A's deployment can inherit by any means short of retraining on Dataset A's own, noisier feature
+distribution.
+
 ## What this section still needs before final assembly
 
-- Dataset B's equivalent FPR (hard framing) is not yet in this draft — the tracker only records
-  F1 ≈ 0.9999 for B's backfilled XGBoost run, not the underlying precision/recall/FPR breakdown needed
-  to redo this same extrapolation for Dataset B. **Pulling the exact FPR from
-  `runs/metrics/xgboost_dohbrw2020_hard.json` and adding a second Dataset-B column to the table above is
-  the one remaining piece** — likely a very different story given B's near-perfect separation, and worth
-  stating as a direct contrast to Dataset A's result once the number is in hand.
 - This section assumes a single illustrative production scale (10M queries/day) and a single assumed
   base rate (1:10,000), matching the plan's own stated assumption — both are explicitly labelled as
   illustrative, not measured, and should stay labelled that way in the final chapter text.

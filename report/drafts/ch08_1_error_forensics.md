@@ -28,20 +28,28 @@ every axis except FPR (which is low only because it flags almost nothing as posi
 next to a 2.34% recall is not a favourable trade, it means the model is close to a constant-negative
 classifier).
 
-**Dataset B — reported metrics** (Teammate B's backfills; exact integer confusion matrices not in hand
-for XGBoost, only the aggregated precision/recall/FPR/F1 — noted here as metrics, not reconstructed into
-counts, to avoid presenting a derived number as an original one):
+**Dataset B — XGBoost now exact** (run by A, 15 Aug, once Dataset B's raw CSVs were local — real
+out-of-fold, 5-fold CV, 39,614 rows): **TN=19,807, FP=0, FN=4, TP=19,803** — recall 99.98%, **FPR
+0.0000% (literally zero false positives across every one of the 19,807 benign rows)**, precision
+100.00%, F1 0.9999. This resolves the gap flagged since Ch 8.2b: Dataset B's XGBoost FPR is not merely
+low, it is exactly zero in this run. The 4 false negatives are worth naming specifically, since there are
+only 4: two of the four route through `SourceIP = 1.1.1.1` — Cloudflare's public DoH resolver, a
+legitimate, high-volume, trusted endpoint — rather than one of the fixed internal testbed IPs
+(`192.168.20.x`) every other malicious row in this dataset uses. A malicious tunnel routed through a
+well-known public resolver is a plausible, concrete way for packet-shape statistics to look closer to
+ordinary traffic than testbed-IP-routed malicious traffic does — the two misses the model does make are
+not random noise, they cluster on exactly the kind of row that would look least anomalous.
+
+**Dataset B — remaining models, reported metrics** (Teammate B's backfills; exact integer confusion
+matrices not in hand for these three, only the aggregated precision/recall/FPR/F1 — noted here as
+metrics, not reconstructed into counts, to avoid presenting a derived number as an original one):
 
 | model | framing | precision | recall | FPR | F1 | ROC-AUC |
 |---|---|---|---|---|---|---|
-| XGBoost | hard | — | — | — | ≈0.9999 | — |
 | CNN | hard | 0.9956 | 0.9920 | 0.0044 | 0.9938 | 0.9995 |
 | Isolation Forest | hard | 0.5951 | 0.2391 | 0.1627 | 0.3411 | 0.4611 |
 | Isolation Forest | easy | 0.3441 | 0.3218 | 0.1671 | 0.3326 | 0.5572 |
 | Autoencoder | hard | 0.8400 | 0.2681 | 0.0508 | 0.4064 | 0.7903 |
-
-*(XGBoost's Dataset B row still only has F1 recorded — precision/recall/FPR/ROC-AUC weren't kept in the
-tracker's one-line backfill summary. Same open item as Ch 8.2b's missing Dataset B FPR column.)*
 
 **Dataset B tells almost the opposite story from Dataset A on the supervised/unsupervised split**: XGBoost
 and CNN both remain excellent (F1 0.994–1.00), but Isolation Forest and the Autoencoder are *also*
@@ -201,10 +209,10 @@ Chapter 8.4's cascade rationale needs.
 
 ## 8.1.6 What's still open
 
-- Exact Dataset B confusion-matrix integers for XGBoost (only F1 is recorded), and, once available, the
-  same cross-model chance-baseline overlap analysis run on Dataset B — worth doing since Dataset B's
-  near-perfect XGBoost/CNN separation makes for a very different starting point than Dataset A's, and
-  §8.1.1 already shows the supervised/unsupervised gap is much narrower there.
+- Cross-model chance-baseline overlap analysis on Dataset B (all four models) — not yet done. Given
+  XGBoost's Dataset B result now in hand (4 total false negatives, 0 false positives), there is very
+  little error mass to work with there compared to Dataset A's tens of thousands — worth doing for
+  completeness but unlikely to be as information-dense a comparison as Dataset A's.
 - A chance-baseline recomputation for the original Step 3A XGBoost-vs-LogReg pair, now superseded by the
   real XGBoost-vs-CNN numbers above — the LogReg run itself is no longer part of this chapter's
   comparison set (dropped per the standing rule against keeping a stand-in alongside its real

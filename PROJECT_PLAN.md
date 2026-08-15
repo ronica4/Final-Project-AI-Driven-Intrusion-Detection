@@ -2002,9 +2002,15 @@ numbers — at a 1% FPR and 1:10,000 base rate, it's **100,000 false alerts tota
 **~1,000 true positives per day**, i.e. ~100 false alerts *per* true positive, not 100,000. The draft
 states both numbers separately and correctly.
 
-**Still needed before this section is final:** Dataset B's equivalent FPR (hard framing) to add a
-second column — the tracker only has B's F1≈0.9999 for that run, not the underlying FPR needed to redo
-this extrapolation for Dataset B.
+**Gap now closed (15 Aug 2026):** Dataset B's XGBoost forensics run for real by A
+(`error_analysis_xgboost_dohbrw2020.json`) — TN=19,807, FP=0, FN=4, TP=19,803. **0 observed false
+positives across 19,807 benign rows**, reported honestly via a rule-of-three 95% upper bound (≤0.0151%,
+not a naive 0.0000% claim) rather than overclaiming from a small sample. Extrapolated to the same
+10M-queries/day production scale: Dataset B's alert queue would be ~39.8% real attacks (1 in ~2.5) vs.
+Dataset A's ~0.025% (1 in ~4,050) — a genuinely different, SOC-usable outcome, not a marginal one. Also
+resolves Ch 8.1's parallel gap. The 4 false negatives cluster informatively: 2 of 4 route through
+`SourceIP=1.1.1.1` (Cloudflare's public DoH resolver) rather than the fixed testbed attacker IP every
+other malicious row uses.
 
 **✅ RESULTS (15 Aug 2026) — §8.2 and §8.3 now done too, once Step 2G and B's Ch 6.2 table landed.**
 
