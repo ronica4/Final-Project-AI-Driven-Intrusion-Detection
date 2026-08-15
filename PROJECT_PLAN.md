@@ -211,7 +211,7 @@ Gate: **BLOCK** = gates the other person's work, gets priority · **PAR** = para
 | 4D — Ch 7 pipeline + Appendices A & B | B | PAR | ✅ | Draft done: `ch07_pipeline.md` |
 | 4E — Ch 8.1–8.3 error analysis, variance, benchmarking | A | PAR | ✅ | All of §8.1–8.3 done — see `ch08_1_error_forensics.md` (now all 4 models, real CNN/AE replacing the LogReg stand-in), `ch08_2_cross_dataset_verdict.md`, `ch08_2b_base_rate_honesty.md`, `ch08_3_benchmark_comparison.md` |
 | 4F — Ch 8.4 cascade + Bonus chapter | B | PAR | ✅ | Draft done: `ch08_4_cascade.md`. Bonus chapter n/a — 3D deferred |
-| 4G — Executive Summary | A | PAR | ⬜ | Written last, max 1 page |
+| 4G — Executive Summary | A | PAR | ✅ | `ch00_executive_summary.md`, pushed `ceb9484` |
 | 4H — **Final assembly**, formatting, captions, 15-page cut | **B** | BLOCK | ⬜ | Single owner — a doc stitched by two people reads like it |
 | **PHASE 5 — SUBMISSION** | | | | |
 | 5A — AI log export, both teammates | A+B | BLOCK | 🟡 | **B done** (15 Aug): `ai_logs/claude_code_teammate_B.json`, full/unedited, scanned for `HF_TOKEN` (none pasted). A's export still pending. Full and unedited — curated = treated as missing |
