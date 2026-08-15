@@ -1,23 +1,10 @@
 # Chapter 4 — Feature Ranking and the Leakage Demonstration
 
-This is the strongest single narrative beat in the report: we deliberately cheat, catch ourselves,
-and report the honest number — twice, once per dataset, via two structurally different leakage
-mechanisms. **Both halves are now complete.** Dataset A's half (the `sld` demo, §4.2) was run first and
-produced a genuine, unplanned finding — importance dominance without a real score gap, traced to `sld`'s
-partial class overlap. Dataset B's half (the `SourceIP` demo, §4.3), run once Dataset B's raw CSVs
-arrived locally (15 Aug 2026), shows the same qualitative surprise in a sharper form — see §4.3 for why
-`SourceIP`'s different, genuinely-exclusive leakage mechanism still produces the same practical
-conclusion as `sld`'s partial-overlap one.
+We deliberately cheat, catch ourselves, and report the honest number — via two structurally different
+leakage mechanisms: Dataset A's `sld` (partial-overlap identifier) and Dataset B's `SourceIP`
+(genuinely-exclusive identifier). Both reach the same practical conclusion by different routes.
 
-## 4.1 Figure 4.1 — Gain-based feature importance
-
-Gain-based importance (not the XGBoost default weight-based importance) is used deliberately: weight
-counts how many times a feature is split on and is biased toward high-cardinality features — exactly the
-kind of artifact this chapter's leakage demonstration exists to catch, so using it here would undercut
-the chapter's own argument.
-
-**Dataset A** (`runs/figures/exf2021_feature_importance.png`, clean run, `sld`/timestamp already
-excluded by the production loader):
+## 4.1 Gain-based feature importance (Dataset A, clean run, `sld`/timestamp excluded)
 
 | feature | gain share |
 |---|---|
@@ -30,156 +17,58 @@ excluded by the production loader):
 | rand_entropy | 0.0055 |
 | all 4 B_ONLY columns | 0.0000 |
 
-The 4 B_ONLY columns receive exactly zero gain — XGBoost never splits on a post-imputation constant.
-This is the same "effective input dimensionality is 7, not 11 on Dataset A" finding as Chapters 3 and 6,
-now confirmed a third, independent way: from the model's own splitting behaviour rather than the NaN
-audit or the significance table.
+Gain (not weight-based) importance used deliberately — weight is biased toward high-cardinality features,
+the artifact this chapter's leakage demo exists to catch. B_ONLY columns receive exactly zero gain —
+XGBoost never splits on a post-imputation constant, third independent confirmation that effective
+dimensionality is 7, not 11.
 
-**Dataset B**: **PENDING** — not run locally.
+## 4.2 Leakage demo #1 — Dataset A, `sld`
 
-## 4.2 Leakage demonstration #1 — Dataset A, `sld`
+`sld` takes 22–33 distinct values in attack traffic but 11,134–40,599 in benign — same trap class as
+`SourceIP` (§4.3). Two encodings tested:
 
-Found during the Step 0C header check, not in the original project spec: `sld` (second-level domain, raw
-text) takes only **22–33 distinct values in attack traffic** (sample-dependent) but **11,134–40,599 in
-benign traffic** — structurally the same class of trap as Dataset B's `SourceIP` column (§4.3):
-low-cardinality identifiers that let a model memorise "which of a handful of fixed testbed values" a row
-holds, instead of learning any real behavioural signal.
-
-**Encoding note:** `sld` is text, not numeric, so it cannot be fed to XGBoost as-is. Two encodings were
-tried, specifically to separate "did leakage happen" from "was it a labelling-scheme artifact":
-
-1. **Label-encoded** (`pd.factorize`, arbitrary insertion-order integer codes) —
-   `runs/metrics/leakage_demo_exf2021.json`.
-2. **Binary "known-attack-`sld`" indicator** (1 if this row's `sld` value was ever seen in attack
-   traffic, 0 otherwise) — collapses cardinality entirely, the closest possible analogue to a clean
-   identity lookup — `runs/metrics/leakage_demo_exf2021_binary_variant.json`.
-
-| | F1 (clean, `sld` dropped) | F1 (dirty, `sld` included) | dominant feature, dirty run |
+| | F1 (clean) | F1 (dirty) | dominant feature, dirty |
 |---|---|---|---|
 | Label-encoded `sld` | 0.8182 | 0.8184 | `_leakage_sld`, 75.5% of gain |
 | Binary known-attack indicator | 0.8182 | 0.8184 | `_leakage_sld`, 95.4% of gain |
 
-**This is a genuine, unplanned finding, not a simple replication of the "expect ≈0.99+" prediction the
-plan made by analogy to `SourceIP`.** Importance dominates exactly as expected in both encodings — but
-score barely moves at all (+0.0002 F1), a dramatically muted effect compared to a `SourceIP`-style
-memorised lookup. Running both encodings rules out the obvious alternative explanation (that
-`factorize`'s arbitrary codes, scattered across ~40K distinct values, are too fine-grained for ordinal
-tree splits to isolate cleanly) — the binary variant collapses that concern entirely and gets the
-identical result.
+Importance dominates in both encodings, but score barely moves (+0.0002 F1) — muted vs. a
+`SourceIP`-style memorised lookup. Direct check: of 33 attack-side `sld` values, **30 also appear in
+benign traffic** — only 3 attack-exclusive. Low attack-side cardinality is real, but the value set is
+mostly *shared*, a structurally weaker leakage mechanism than `SourceIP` — dropped by the production
+loader regardless.
 
-**The actual explanation, found by checking class overlap on the `sld` value sets directly:** of the 33
-`sld` values appearing anywhere in attack traffic in this run's sample, **30 also appear in benign
-traffic** — only 3 are attack-exclusive. `sld`'s low attack-side cardinality is real (confirming Step
-0C's original D11 finding), but unlike `SourceIP` (reportedly used exclusively by the attacker in
-Dataset B's testbed — to be confirmed once §4.3 actually runs), `sld`'s low-cardinality value set is
-mostly **shared** with benign traffic, not exclusive to attack. A "known-attack-`sld`" lookup is
-therefore a noisy, weakly-predictive signal rather than a clean shortcut — which is exactly why the
-model still leans on it heavily (it remains the most useful available split) without that translating
-into a large score jump.
+## 4.3 Leakage demo #2 — Dataset B, `SourceIP`
 
-**This refines, rather than overturns, the leakage classification:** `sld` is correctly dropped by the
-production loader — its cardinality skew is real and it is still a testbed-shaped artifact rather than a
-generalisable behavioural signal — but it is demonstrably a structurally weaker leakage mechanism than a
-`SourceIP`-style exclusive identifier, and the difference is now quantified rather than assumed by
-analogy.
+Real data, hard framing (39,614 rows). `SourceIP` has only **21 distinct values** — `192.168.20.111` alone
+27.7% of rows; top 5 IPs over half.
 
-## 4.3 Leakage demonstration #2 — Dataset B, `SourceIP`
-
-**Status (15 Aug 2026): run for real by Teammate A**, once Dataset B's raw CSVs arrived locally (see
-Chapter 5's provenance note). Single-column demo, `SourceIP` only — the other 4 dropped identifiers
-(`DestinationIP`, `SourcePort`, `DestinationPort`, `TimeStamp`) are loaded alongside it via
-`include_leakage_columns=True` but excluded from both the dirty and clean frames here, mirroring §4.2's
-single-column `sld` demo rather than testing all 5 at once. Real data, Dataset B hard framing (39,614
-rows), `features/selection.py`'s `factorize_leakage_column()` / `gain_importance()`, same XGBoost
-hyperparameters as every other run in this report:
-
-**`SourceIP` has only 21 distinct values in the raw data** — confirming the testbed-artifact hypothesis
-directly: `192.168.20.111` alone accounts for 10,982 of 39,614 rows (27.7%), the top 5 IPs together
-account for over half the dataset. This is a lab-network identifier space, not a real-world one.
-
-| variant | F1 | PR-AUC | top-3 gain importance |
-|---|---|---|---|
-| with `_leakage_sourceip` (factorized) | 0.9998 | 1.0000 | `_leakage_sourceip` 0.3818, `struct_segments` 0.1321, `time_dispersion` 0.1053 |
-| clean (production loader default) | **0.9999** | 1.0000 | `struct_segments` 0.3057, `time_dispersion` 0.1923, `time_central` 0.1304 |
-
-**The same genuine surprise as §4.2's `sld` demo, in a sharper form: the leakage column dominates gain
-importance (0.3818, by far the single largest feature) yet the clean model is not merely
-close — it is marginally *better* (F1 0.9999 vs. 0.9998).** Unlike `sld` on Dataset A (where a real,
-if small, F1 gap existed and was traced to `sld`'s *partial* class overlap — 22 of 33 attack values also
-appearing in benign traffic), `SourceIP` on Dataset B hard framing has essentially **no room to move the
-needle at all**: Step 2D already established this framing is near-perfectly separable on packet-shape
-features alone (clean F1≈0.9999, majority baseline F1=0.6667), so there is no residual error for even an
-exclusive lookup-table feature to recover. The mechanism is different from `sld`'s partial-overlap
-story — `SourceIP` genuinely could act as a near-exact lookup here, unlike `sld` — but the *practical*
-conclusion is the same one §4.2 already drew: **high gain importance is a measure of "how much the
-model's splits routed through this column," not "how much this column's removal would cost."** On a
-saturated classification problem, both a genuinely leaky feature and a legitimate one can look
-identical on a before/after F1 comparison, which is exactly why this report checks both, on both
-datasets, rather than trusting importance alone. Saved: `runs/metrics/leakage_demo_dohbrw2020.json`.
-
-## 4.4 Multicollinearity — Variance Inflation Factor
-
-VIF computed via `sklearn.linear_model.LinearRegression` (`VIF_i = 1/(1 − R²_i)`), not `statsmodels` —
-the formula is direct enough that adding a new pinned dependency both teammates would need to install
-wasn't worth it for one calculation.
-
-**Dataset A**, all 11 columns (`runs/metrics/vif_exf2021.json`) — substantially more collinearity than
-the plan anticipated (it predicted `vol_primary`/`vol_secondary` specifically as the one collinear pair):
-
-| feature | VIF | flagged (>10) |
+| variant | F1 | top-3 gain importance |
 |---|---|---|
-| vol_primary | 128.3 | yes |
-| vol_secondary | 113.6 | yes |
-| vol_total | 136.3 | yes |
-| rand_entropy | 2.33 | no |
-| rand_dispersion | 14.4 | yes |
-| struct_segments | 100.5 | yes |
-| struct_max_segment | 168.0 | yes |
-| 4 B_ONLY columns | undefined (all-NaN) | — |
+| with `_leakage_sourceip` | 0.9998 | `_leakage_sourceip` 0.3818, `struct_segments` 0.1321, `time_dispersion` 0.1053 |
+| clean (production default) | **0.9999** | `struct_segments` 0.3057, `time_dispersion` 0.1923, `time_central` 0.1304 |
 
-**6 of 7 testable columns are heavily collinear** (VIF ≫ 10) — nearly all of F1 (volume) and F3
-(structure) are redundant with each other, consistent with Chapter 3's flagged correlation pairs
-(`vol_secondary` ↔ `struct_segments`, `rand_dispersion` ↔ `struct_segments`). **Not acted on for
-XGBoost** — tree splits are robust to collinearity, consistent with the model still using several of
-these redundant columns productively in §4.1's gain ranking — but flagged explicitly for Chapter 6's
-CNN/Autoencoder discussion, where dense/convolutional inputs are more sensitive to redundant features
-than tree splits are.
+Sharper than §4.2: leakage column dominates gain (0.3818) yet the clean model is marginally *better*. Step
+2D already established near-perfect separability on packet-shape features alone, so no residual error even
+an exclusive lookup can recover. High gain importance measures "how much splits routed through this
+column," not "how much removing it would cost" — why both are checked, both datasets.
 
-`rand_entropy` has the **lowest** VIF of all 7 columns (2.33) — the least redundant feature in the set —
-which sharpens rather than contradicts its near-zero gain importance in §4.1: it isn't being crowded out
-by a correlated feature, it genuinely carries little independent signal on this dataset (corroborated a
-third way by Chapter 3's "negligible" Cliff's delta for the same column).
+## 4.4 Multicollinearity — Variance Inflation Factor (Dataset A, all 11 columns)
 
-**Dataset B**: **PENDING** — not run.
+Full table in Appendix D.2. **6 of 7 testable columns heavily collinear** (VIF>10: vol_primary 128.3,
+vol_secondary 113.6, vol_total 136.3, rand_dispersion 14.4, struct_segments 100.5, struct_max_segment
+168.0) — F1/F3 almost entirely redundant, consistent with Ch. 3's correlation pairs. Not acted on for
+XGBoost (tree splits robust to collinearity); flagged for Ch. 6's CNN/Autoencoder discussion. `rand_entropy`
+lowest VIF (2.33) — least redundant, sharpening its near-zero gain importance: genuinely little
+independent signal (third corroboration, after Ch. 3's Cliff's delta).
 
-## 4.5 Discrepancy analysis — the three rubric questions, answered per surprise (Dataset A)
-
-**1. Did the algorithm agree with our intuition as security analysts?** Partially. Volume and
-encoding-randomness (`vol_total`, `rand_dispersion`) jointly dominating gain (~79% combined) matches the
-prior that payload volume and randomness are the primary exfiltration signals. It did **not** expect the
-specific, classically-cited entropy feature (`rand_entropy`) to rank last among testable features
-(0.55% of gain).
-
-**2–3. What surprised us, and is each surprise leakage / multicollinearity / a genuine latent pattern?**
-Answered per surprise, not in general, because the three surprises below have three different causes:
+## 4.5 Discrepancy analysis
 
 | Surprise | Classification | Evidence |
 |---|---|---|
-| `rand_entropy`'s near-zero importance | **Genuine latent pattern** | VIF = 2.33, the *lowest* of all 7 (rules out multicollinearity as the cause); Cliff's δ = −0.125, "negligible" (Chapter 3, independently corroborates via a completely different method) |
-| `sld` dominates importance but barely moves the score | **Neither straightforward leakage-as-predicted nor multicollinearity** — a refinement of the leakage finding itself | Class-overlap analysis: 30 of 33 attack `sld` values also appear in benign traffic (§4.2) |
-| Near-universal high VIF across F1/F3 | **Multicollinearity**, confirmed directly | Consistent with Chapter 3's correlation heatmap; larger in scope than the plan predicted, not different in kind |
+| `rand_entropy`'s near-zero importance | Genuine latent pattern | VIF=2.33 (rules out collinearity); Cliff's δ=−0.125, negligible (Ch. 3) |
+| `sld` dominates importance but barely moves score | Refinement of leakage, not straightforward | 30/33 attack `sld` values also appear in benign (§4.2) |
+| Near-universal high VIF across F1/F3 | Multicollinearity, confirmed directly | Consistent with Ch. 3; larger in scope than predicted |
 
-Two independent methods (univariate effect size in Chapter 3, multivariate gain importance here) agree
-that `rand_entropy` underperforms its security-literature reputation on this specific dataset — a
-finding worth stating plainly in Chapter 8's benchmark comparison (Chapter 8.3) rather than treating as
-an implementation quirk.
-
-## 4.6 What's still open
-
-- Dataset B's `SourceIP` leakage demo (§4.3) and VIF table (§4.4) — pending Teammate B's local run;
-  code is dataset-agnostic and ready.
-- Once §4.3 lands, §4.5's discrepancy table should be extended with a fourth row comparing the two
-  datasets' leakage mechanisms directly (exclusive identifier vs. partial-overlap identifier) — that
-  comparison is likely to be a stronger Chapter 4 closer than either demo alone, matching Chapter 2's
-  observation that this project's data-driven findings tend to be strongest when two independent methods
-  or datasets corroborate (or productively disagree with) each other.
+Two independent methods (Ch. 3's effect size, this chapter's gain importance) agree `rand_entropy`
+underperforms its security-literature reputation on this dataset — stated plainly in Ch. 8.3.
