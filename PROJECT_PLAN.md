@@ -1453,12 +1453,12 @@ else) — before running against real data.
 ### 🔄 SYNC 3 — end of Phase 2
 **Owner: A+B · Gate: BLOCKING**
 
-- [ ] All four models trained on: Dataset A, Dataset B hard, Dataset B easy
-- [ ] Every result in `runs/metrics/` using the agreed JSON schema
-- [ ] Leakage demo complete with before/after numbers
-- [ ] Both sensitivity sweeps plotted
-- [ ] Transfer matrix and ablation complete
-- [ ] **Both teammates run `main.py` end to end on both datasets on their own machine**
+- [ ] All four models trained on: Dataset A ✅, Dataset B hard ✅, Dataset B easy — CNN/AE still running on B's machine as of 15 Aug (XGBoost/Isolation Forest easy-framing status not yet confirmed either — check with B)
+- [x] Every result in `runs/metrics/` using the agreed JSON schema
+- [ ] Leakage demo complete with before/after numbers — Dataset A `sld` demo ✅; Dataset B `SourceIP` demo still not run (flagged PENDING since Ch4, `ch04_feature_ranking.md` §4.3)
+- [x] Both sensitivity sweeps plotted (XGBoost `max_depth`, Isolation Forest `contamination`) — both datasets
+- [x] Transfer matrix and ablation complete — real data, all 4 models (15 Aug)
+- [x] **A ran `main.py` end to end on both datasets on this machine** (15 Aug, `--mode eda` for `exf2021` and `dohbrw2020`, both clean). **B's exf2021 run is still the Step 1C stub** (verified to fail at the correct point — no Dataset A locally) — not fully satisfiable as originally scoped since B never downloaded Dataset A's raw files; A's clean run on both datasets plus B's clean run on Dataset B is the closest this item gets to "both teammates, both datasets" given that constraint. Worth a one-line acknowledgment in the report if the rubric expects literal symmetry here, rather than silently claiming it happened
 
 ---
 

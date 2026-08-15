@@ -266,12 +266,38 @@ numbers against these exact versions, not a `>=` range):
 
 | | Teammate B (this machine) | Teammate A |
 |---|---|---|
-| OS | Windows 11 Pro, 64-bit | *pending A's entry* |
-| CPU | 12th Gen Intel Core i5-1240P (12 cores / 16 logical processors) | *pending A's entry* |
-| RAM | 15.7 GB | *pending A's entry* |
-| GPU | None used — all model training is CPU-only per D10 (PyTorch CPU build; XGBoost/sklearn are CPU by default) | *pending A's entry* |
-| Role in this project | Dataset B (CIRA-CIC-DoHBrw-2020) local; Step 3C cascade, Step 2E/2F, report chapters | Dataset A (CIC-Bell-DNS-EXF-2021) local; Step 2G real-data run, Ch 8.1–8.3 |
+| OS | Windows 11 Pro, 64-bit | Windows 11 Home, 64-bit (Build 26200) |
+| CPU | 12th Gen Intel Core i5-1240P (12 cores / 16 logical processors) | 13th Gen Intel Core i7-1360P (12 cores / 16 logical processors) |
+| RAM | 15.7 GB | 15.7 GB |
+| GPU | None used — all model training is CPU-only per D10 (PyTorch CPU build; XGBoost/sklearn are CPU by default) | None used — same CPU-only convention |
+| Role in this project | Dataset B (CIRA-CIC-DoHBrw-2020) local; Step 3C cascade, Step 2E/2F, report chapters | Dataset A (CIC-Bell-DNS-EXF-2021) local; Step 2G real-data run, Step 2F Dataset A backfill, Ch 8.1–8.3 |
 
-Teammate A's row is left as an explicit placeholder rather than filled with an assumed value — flagged
-here, not fabricated, per the same convention used throughout Chapter 5 for content pending A's local
-run.
+**A real discrepancy worth flagging rather than silently smoothing over: the "Library versions" table
+above states one set of pinned versions "the grader reproduces our numbers against," but Teammate A's
+actual installed environment does not match `requirements.txt` exactly** — checked directly (`python -c
+"import pandas; print(pandas.__version__)"` etc.) rather than assumed:
+
+| Library | `requirements.txt` (pinned) | Teammate A's actual environment |
+|---|---|---|
+| Python | 3.12.1 | 3.11.9 |
+| pandas | 3.0.5 | 2.2.3 |
+| numpy | 2.5.2 | 2.2.4 |
+| scikit-learn | 1.9.0 | 1.8.0 |
+| scipy | 1.18.0 | 1.16.3 |
+| imbalanced-learn | 0.14.2 | 0.14.2 (matches) |
+| xgboost | 3.4.0 | 3.2.0 |
+| torch | 2.13.0+cpu | 2.10.0+cpu |
+| matplotlib | 3.11.1 | 3.10.3 |
+| seaborn | 0.13.2 | 0.13.2 (matches) |
+| PyYAML | 6.0.3 | 6.0.3 (matches) |
+| pytest | 9.1.1 | 8.4.2 |
+
+Every result in this report from Teammate A's machine (Step 1A/2D/2E's Dataset A half, Step 2F's Dataset
+A backfill, Step 2G's real cross-dataset run, Step 3A/3B forensics) was produced under the versions in
+the right-hand column, not the pinned ones — `requirements.txt` appears to have been pinned from
+Teammate B's environment at some point after Teammate A's venv was first set up (Step 0A), and the two
+were never re-synced. Reported honestly here rather than either (a) claiming exact-version reproducibility
+that did not actually hold, or (b) risking a late dependency upgrade this close to the deadline purely to
+make the table match — a major-version bump on pandas (2→3) or numpy this late carries real regression
+risk for zero report-quality benefit, since every real number in this document was already produced,
+verified, and tested under the versions actually listed above.
