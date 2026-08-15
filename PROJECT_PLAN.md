@@ -204,13 +204,13 @@ Gate: **BLOCK** = gates the other person's work, gets priority · **PAR** = para
 | **SYNC 4** — all numbers frozen, no further experiments | A+B | BLOCK | ⬜ | |
 | **PHASE 4 — REPORT** | | | | |
 | 4A — Ch 1 threat characterisation + Ch 2 literature matrix | A | PAR | ✅ | Draft done: `report/drafts/ch01_threat_characterization.md`, `ch02_literature_review.md`. Caught+fixed a MITRE ID error (T1572 has no sub-techniques). |
-| 4B — Ch 3 EDA + Ch 4 feature ranking | A | PAR | ✅ | Draft done: `report/drafts/ch03_eda.md`, `ch04_feature_ranking.md`. Dataset B `SourceIP` demo + VIF flagged PENDING (data locality) |
-| 4C — Ch 5 harmonisation + Ch 6 model justification | B | PAR | 🟡 | Draft done: `ch05_harmonisation.md`, `ch06_models.md`. §5.2 (transfer matrix numbers) was pending B's write, now backfilled by A with real 4-model results — needs a final pass to fold those numbers into the prose |
+| 4B — Ch 3 EDA + Ch 4 feature ranking | A | PAR | ✅ | Draft done: `report/drafts/ch03_eda.md`, `ch04_feature_ranking.md`. `SourceIP`/VIF pending items resolved — real numbers now in both chapters |
+| 4C — Ch 5 harmonisation + Ch 6 model justification | B | PAR | ✅ | Draft done: `ch05_harmonisation.md`, `ch06_models.md`. §5.2 transfer matrix numbers folded into prose |
 | 4D — Ch 7 pipeline + Appendices A & B | B | PAR | ✅ | Draft done: `ch07_pipeline.md` |
 | 4E — Ch 8.1–8.3 error analysis, variance, benchmarking | A | PAR | ✅ | All of §8.1–8.3 done — see `ch08_1_error_forensics.md` (now all 4 models, real CNN/AE replacing the LogReg stand-in), `ch08_2_cross_dataset_verdict.md`, `ch08_2b_base_rate_honesty.md`, `ch08_3_benchmark_comparison.md` |
 | 4F — Ch 8.4 cascade + Bonus chapter | B | PAR | ✅ | Draft done: `ch08_4_cascade.md`. Bonus chapter n/a — 3D deferred |
 | 4G — Executive Summary | A | PAR | ✅ | `ch00_executive_summary.md`, pushed `ceb9484` |
-| 4H — **Final assembly**, formatting, captions, 15-page cut | **B** | BLOCK | ⬜ | Single owner — a doc stitched by two people reads like it |
+| 4H — **Final assembly**, formatting, captions, 15-page cut | **B** | BLOCK | 🟡 | Single owner. All 14 chapters merged into `report/Final_Report.docx`; 3 rounds of prose compression + a new Appendix D (supporting tables moved out of the body) + tightened docx formatting brought body pages 37→19 (target ≤15) with every number/table/finding preserved. Still ~4 pages over — B continues cutting. See "Status for A" note below |
 | **PHASE 5 — SUBMISSION** | | | | |
 | 5A — AI use disclosure | A+B | BLOCK | ✅ | **Revised 15 Aug**, per the professor: raw log exports not required. `ai_use.md` written and pushed instead; both raw log files removed |
 | 5B — Clean-checkout verification + ZIP assembly | A+B | BLOCK | ⬜ | |
@@ -2084,6 +2084,42 @@ the merged result but does not edit the file directly.
 - [ ] Exploratory plots moved to appendices to protect the page budget
 - [ ] Cross-references correct (Ch 8.3 cites the Ch 6.2 benchmark table)
 - [ ] **A reads the assembled document end to end and sends comments to B**
+
+---
+
+### 📋 Status for A (Guy) — 15 Aug, mid-day
+
+**Where things stand.** All 14 chapter drafts + `report/Final_Report.docx` are merged and pushed
+(latest: `e43488e`). Every number, table, and named finding from Phase 2–4 is preserved verbatim —
+nothing was cut for content, only prose tightened and a few large supporting tables (Cliff's delta full
+table, VIF full table, KS shift full table, cross-model chance-baseline table) moved into a new
+**Appendix D** (`report/drafts/appendix_supporting_tables.md`), each with a one-line pointer + the key
+numbers restated inline in the original chapter.
+
+Page count trajectory this pass: 37 → 27 → 25 → 23 → 20 → **19 body pages** (target: ≤15 body + ≤5
+appendix; appendix currently at 3/5, so there's headroom there). B is continuing to cut the remaining ~4
+pages via further prose compression on the longest chapters (8.1, 5, 4) — no action needed from A on this
+specifically, just flagging it's still in progress, not stalled.
+
+**What A can do right now, in parallel, without waiting for B to hit 15 pages:**
+1. **Pull `e43488e`** and skim `report/Final_Report.docx` end-to-end (Step 4H's last checklist item) —
+   page numbers will still shift, but content, terminology, and cross-references (e.g. Ch 8.3 citing the
+   Ch 6.2 benchmark table, ch03/ch04/ch05/ch08.1's new "Appendix D.x" pointers matching the appendix
+   content) can be reviewed now. Send comments via a commit/PR note or edit to this file — no other
+   channel exists.
+2. **Start Step 5B prep** on your machine: clone to a fresh directory, new venv,
+   `pip install -r requirements.txt`, follow `README.md` literally. Flag anything that needs unwritten
+   knowledge — that's a README bug. This doesn't depend on the report being at final page count.
+3. **Run the `git log -p | grep -i "hf_"` check** (must be empty) and confirm `.env` was never committed,
+   on your own clone, independently of B.
+4. Decide/confirm **SYNC 4** ("all numbers frozen, no further experiments") — functionally true already
+   (every chapter is on real data, no placeholders remain), just needs the checklist box ticked once both
+   of you agree nothing else changes.
+
+**What's still blocked on B:** final page count ≤15 body pages, then the last Step 4H checklist item (A's
+end-to-end read + comments) can close out for real, followed by Step 5B ZIP assembly
+(`Group_211430046_211897574_Final_Project.zip`) and SYNC 5. B will push again as soon as the budget is
+met — watch for the next commit rather than pulling on a timer.
 
 ---
 
